@@ -12,24 +12,100 @@ import java.util.Map;
 public class GeoLite2Convert {
     private static final String LOCATIONS_PATH = "F:\\下载\\GeoLite2-City-CSV_20231006\\GeoLite2-City-Locations-zh-CN.csv";
     private static final String IPV4_PATH = "F:\\下载\\GeoLite2-City-CSV_20231006\\GeoLite2-City-Blocks-IPv4.csv";
-    private static final String OUTPUT_PATH = "F:\\下载\\GeoLite2-City-CSV_20231006\\Geography_Ip.json";
+    private static final String LOCATIONS_OUTPUT_PATH = "F:\\下载\\GeoLite2-City-CSV_20231006\\Geography.json";
+    private static final String IP_OUTPUT_PATH = "F:\\下载\\GeoLite2-City-CSV_20231006\\Geography_Ip.json";
+
+    private static Map<String, String[]> locationMap = new HashMap<>();
+    private static Map<String, String> parentIdMap = new HashMap<>();
 
     public static void main(String[] args) {
-        Map<String, String[]> locationMap = new HashMap<>();
+        readLocations();
+        convertToCityInfo();
+        convertToIpInfo();
+    }
 
+    private static void readLocations() {
         try (BufferedReader br = new BufferedReader(new FileReader(LOCATIONS_PATH))) {
             String line;
             br.readLine(); // Skip header
             while ((line = br.readLine()) != null) {
                 String[] values = line.split(",");
-                locationMap.put(values[0], new String[]{values[5], values[7], values[10]});
+                String id = values[0];
+                String contryName = values[5];
+                String provinceName = values[7];
+                String cityName = values[10];
+                if (cityName == null || cityName.trim().isEmpty()) {
+                    if (provinceName == null || provinceName.trim().isEmpty()) {
+                        parentIdMap.put(contryName, id);
+                    } else {
+                        parentIdMap.put(contryName + " " + provinceName, id);
+                    }
+                } else if (provinceName == null || provinceName.trim().isEmpty()) {
+                    parentIdMap.put(contryName, id);
+                }
+                String simpleName = !cityName.isEmpty() ? cityName : (!provinceName.isEmpty() ? provinceName : contryName);
+                locationMap.put(id, new String[]{contryName, provinceName, cityName, simpleName});
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
 
-        try (BufferedReader br = new BufferedReader(new FileReader(IPV4_PATH));
-             FileWriter fw = new FileWriter(OUTPUT_PATH)) {
+    }
+
+    private static void convertToCityInfo() {
+        try (BufferedReader br = new BufferedReader(new FileReader(IPV4_PATH)); FileWriter fw = new FileWriter(LOCATIONS_OUTPUT_PATH)) {
+            String line;
+            br.readLine(); // Skip header
+            fw.write("[\n");
+            boolean firstEntry = true;
+            while ((line = br.readLine()) != null) {
+                String[] values = line.split(",");
+                String geonameId = values[1];
+                String latitude = "0";
+                String longitude = "0";
+                try {
+                    latitude = String.format("%.2f", Double.parseDouble(values[7]));
+                    longitude = String.format("%.2f", Double.parseDouble(values[8]));
+                } catch (Exception ignored) {
+                }
+
+                if (locationMap.containsKey(geonameId)) {
+                    String[] locationInfo = locationMap.get(geonameId);
+                    String cityName = locationInfo[2];
+                    String provinceName = locationInfo[1];
+                    String parentName = locationInfo[0];
+                    String parentId = "";
+                    if (!cityName.isEmpty()) {
+                        if (!provinceName.isEmpty()) {
+                            parentName = parentName + " " + provinceName;
+                        }
+                        if (parentIdMap.containsKey(parentName)) {
+                            parentId = parentIdMap.get(parentName);
+                        }
+                    } else if (!provinceName.isEmpty()) {
+                        if (parentIdMap.containsKey(parentName)) {
+                            parentId = parentIdMap.get(parentName);
+                        }
+                    }
+                    String simpleName = locationInfo[3];
+                    String entry = String.format("{\"latitude\": %s, \"name\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": \"%s\", \"longitude\": %s}", latitude, simpleName, geonameId, geonameId, parentId, longitude);
+                    fw.write(entry);
+                    if (!firstEntry) {
+                        fw.write(",");
+                    } else {
+                        firstEntry = false;
+                    }
+                    fw.write("\n");
+                }
+            }
+            fw.write("]");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void convertToIpInfo() {
+        try (BufferedReader br = new BufferedReader(new FileReader(IPV4_PATH)); FileWriter fw = new FileWriter(IP_OUTPUT_PATH)) {
             String line;
             br.readLine(); // Skip header
             fw.write("[\n");
@@ -45,14 +121,15 @@ public class GeoLite2Convert {
                 String[] location = locationMap.get(geonameId);
 
                 if (location != null) {
+                    String cityInfo = location[0] + " " + location[1] + " " + location[2];
+                    String result = "{\"city\":\"" + cityInfo + "\",\"start_ip\":" + ips[0] + ",\"id\":\"" + geonameId + "\",\"end_ip\":" + ips[1] + "}";
+                    fw.write(result);
                     if (!firstEntry) {
                         fw.write(",");
                     } else {
                         firstEntry = false;
                     }
-                    String cityInfo = location[0] + " " + location[1] + " " + location[2];
-                    String result = "{\"city\":\"" + cityInfo + "\",\"start_ip\":" + ips[0] + ",\"id\":\"" + geonameId + "\",\"end_ip\":" + ips[1] + "}\n";
-                    fw.write(result);
+                    fw.write("\n");
                 }
             }
             fw.write("]");
