@@ -7,7 +7,9 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 public class GeoLite2Convert {
     private static final String LOCATIONS_PATH = "F:\\下载\\GeoLite2-City-CSV_20231006\\GeoLite2-City-Locations-zh-CN.csv";
@@ -17,6 +19,7 @@ public class GeoLite2Convert {
 
     private static Map<String, String[]> locationMap = new HashMap<>();
     private static Map<String, String> parentIdMap = new HashMap<>();
+    private static Set<String> idSet = new HashSet<>();
 
     public static void main(String[] args) {
         readLocations();
@@ -56,7 +59,7 @@ public class GeoLite2Convert {
         try (BufferedReader br = new BufferedReader(new FileReader(IPV4_PATH)); FileWriter fw = new FileWriter(LOCATIONS_OUTPUT_PATH)) {
             String line;
             br.readLine(); // Skip header
-            fw.write("[\n");
+            fw.write("[");
             boolean firstEntry = true;
             while ((line = br.readLine()) != null) {
                 String[] values = line.split(",");
@@ -74,6 +77,9 @@ public class GeoLite2Convert {
                     String cityName = locationInfo[2];
                     String provinceName = locationInfo[1];
                     String parentName = locationInfo[0];
+                    if (idSet.contains(geonameId)) {
+                        continue;
+                    }
                     String parentId = "";
                     if (!cityName.isEmpty()) {
                         if (!provinceName.isEmpty()) {
@@ -88,27 +94,29 @@ public class GeoLite2Convert {
                         }
                     }
                     String simpleName = locationInfo[3];
-                    String entry = String.format("{\"latitude\": %s, \"name\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": \"%s\", \"longitude\": %s}", latitude, simpleName, geonameId, geonameId, parentId, longitude);
-                    fw.write(entry);
                     if (!firstEntry) {
-                        fw.write(",");
+                        fw.write(",\n");
                     } else {
+                        fw.write("\n");
                         firstEntry = false;
                     }
-                    fw.write("\n");
+                    String entry = String.format("{\"latitude\": %s, \"name\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": \"%s\", \"longitude\": %s}", latitude, simpleName, geonameId, geonameId, parentId, longitude);
+                    fw.write(entry);
+                    idSet.add(geonameId);
                 }
             }
-            fw.write("]");
+            fw.write("\n]");
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
     private static void convertToIpInfo() {
+        long id = 1;
         try (BufferedReader br = new BufferedReader(new FileReader(IPV4_PATH)); FileWriter fw = new FileWriter(IP_OUTPUT_PATH)) {
             String line;
             br.readLine(); // Skip header
-            fw.write("[\n");
+            fw.write("[");
             boolean firstEntry = true;
             while ((line = br.readLine()) != null) {
                 String[] values = line.split(",");
@@ -122,17 +130,18 @@ public class GeoLite2Convert {
 
                 if (location != null) {
                     String cityInfo = location[0] + " " + location[1] + " " + location[2];
-                    String result = "{\"city\":\"" + cityInfo + "\",\"start_ip\":" + ips[0] + ",\"id\":\"" + geonameId + "\",\"end_ip\":" + ips[1] + "}";
-                    fw.write(result);
                     if (!firstEntry) {
-                        fw.write(",");
+                        fw.write(",\n");
                     } else {
+                        fw.write("\n");
                         firstEntry = false;
                     }
-                    fw.write("\n");
+                    String result = "{\"city\":\"" + cityInfo + "\",\"start_ip\":" + ips[0] + ",\"id\":\"" + id + "\",\"end_ip\":" + ips[1] + "}";
+                    fw.write(result);
+                    id++;
                 }
             }
-            fw.write("]");
+            fw.write("\n]");
         } catch (IOException e) {
             e.printStackTrace();
         }
