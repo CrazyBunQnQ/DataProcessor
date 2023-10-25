@@ -270,4 +270,4 @@ google-services.json
 
 *.bin
 CVE.json
-/src/test/resources/data/
+java/src/test/resources/data/

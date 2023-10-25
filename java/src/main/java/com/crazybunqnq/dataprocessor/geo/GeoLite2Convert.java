@@ -116,8 +116,6 @@ public class GeoLite2Convert {
         try (BufferedReader br = new BufferedReader(new FileReader(IPV4_PATH)); FileWriter fw = new FileWriter(IP_OUTPUT_PATH)) {
             String line;
             br.readLine(); // Skip header
-            fw.write("[");
-            boolean firstEntry = true;
             while ((line = br.readLine()) != null) {
                 String[] values = line.split(",");
                 String network = values[0];
@@ -130,18 +128,11 @@ public class GeoLite2Convert {
 
                 if (location != null) {
                     String cityInfo = location[0] + " " + location[1] + " " + location[2];
-                    if (!firstEntry) {
-                        fw.write(",\n");
-                    } else {
-                        fw.write("\n");
-                        firstEntry = false;
-                    }
                     String result = "{\"city\":\"" + cityInfo + "\",\"start_ip\":" + ips[0] + ",\"id\":\"" + id + "\",\"end_ip\":" + ips[1] + "}";
-                    fw.write(result);
+                    fw.write(result + "\n");
                     id++;
                 }
             }
-            fw.write("\n]");
         } catch (IOException e) {
             e.printStackTrace();
         }
