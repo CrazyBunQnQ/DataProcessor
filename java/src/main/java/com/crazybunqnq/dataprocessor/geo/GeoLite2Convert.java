@@ -12,23 +12,16 @@ import java.util.Map;
 import java.util.Set;
 
 public class GeoLite2Convert {
-    private static final String LOCATIONS_PATH = "F:\\下载\\GeoLite2-City-CSV_20231006\\GeoLite2-City-Locations-zh-CN.csv";
-    private static final String IPV4_PATH = "F:\\下载\\GeoLite2-City-CSV_20231006\\GeoLite2-City-Blocks-IPv4.csv";
-    private static final String LOCATIONS_OUTPUT_PATH = "F:\\下载\\GeoLite2-City-CSV_20231006\\Geography.json";
-    private static final String IP_OUTPUT_PATH = "F:\\下载\\GeoLite2-City-CSV_20231006\\Geography_Ip.json";
 
     private static Map<String, String[]> locationMap = new HashMap<>();
     private static Map<String, String> parentIdMap = new HashMap<>();
     private static Set<String> idSet = new HashSet<>();
 
     public static void main(String[] args) {
-        readLocations();
-        convertToCityInfo();
-        convertToIpInfo();
     }
 
-    private static void readLocations() {
-        try (BufferedReader br = new BufferedReader(new FileReader(LOCATIONS_PATH))) {
+    public static void readLocations(String locationsPath) {
+        try (BufferedReader br = new BufferedReader(new FileReader(locationsPath))) {
             String line;
             br.readLine(); // Skip header
             while ((line = br.readLine()) != null) {
@@ -55,8 +48,8 @@ public class GeoLite2Convert {
 
     }
 
-    private static void convertToCityInfo() {
-        try (BufferedReader br = new BufferedReader(new FileReader(IPV4_PATH)); FileWriter fw = new FileWriter(LOCATIONS_OUTPUT_PATH)) {
+    public static void convertToCityInfo(String ipv4Path, String locationsOutputPath) {
+        try (BufferedReader br = new BufferedReader(new FileReader(ipv4Path)); FileWriter fw = new FileWriter(locationsOutputPath)) {
             String line;
             br.readLine(); // Skip header
             fw.write("[");
@@ -111,9 +104,9 @@ public class GeoLite2Convert {
         }
     }
 
-    private static void convertToIpInfo() {
+    public static void convertToIpInfo(String ipv4Path, String ipOutputPath) {
         long id = 1;
-        try (BufferedReader br = new BufferedReader(new FileReader(IPV4_PATH)); FileWriter fw = new FileWriter(IP_OUTPUT_PATH)) {
+        try (BufferedReader br = new BufferedReader(new FileReader(ipv4Path)); FileWriter fw = new FileWriter(ipOutputPath)) {
             String line;
             br.readLine(); // Skip header
             while ((line = br.readLine()) != null) {
@@ -148,7 +141,7 @@ public class GeoLite2Convert {
             byte[] address = inetAddress.getAddress();
 
             int mask = 0xffffffff << (32 - prefixLength);
-            byte[] maskBytes = new byte[] {
+            byte[] maskBytes = new byte[]{
                     (byte) (mask >>> 24),
                     (byte) (mask >> 16 & 0xff),
                     (byte) (mask >> 8 & 0xff),
