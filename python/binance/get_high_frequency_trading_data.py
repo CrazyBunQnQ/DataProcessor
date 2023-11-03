@@ -10,79 +10,73 @@ api_secret = 'YOUR_API_SECRET'
 # 创建 Binance 客户端实例
 client = Client(api_key, api_secret)
 
-def get_top_volume_pairs():
-    """ 获取前一天所有交易对的交易量数据并选取前 25 """
-    yesterday = datetime.utcnow() - timedelta(days=1)
-    start_str = yesterday.strftime('%Y-%m-%d 00:00:00')
-    end_str = yesterday.strftime('%Y-%m-%d 23:59:59')
+# 设置阈值
+THRESHOLD_VOLUME = 50000000
+THRESHOLD_AMPLITUDE = 0.02
 
+def get_previous_day_tickers():
     tickers = client.get_ticker()
+    usdt_pairs = [ticker for ticker in tickers if ticker['symbol'].endswith('USDT')]
+    sorted_pairs = sorted(usdt_pairs, key=lambda x: float(x['quoteVolume']), reverse=True)
+    top_pairs = sorted_pairs[:25]
+    return [pair['symbol'] for pair in top_pairs]
 
-    # 筛选出交易量，并排序
-    volumes = [
-        (ticker['symbol'], float(ticker['quoteVolume']))
-        for ticker in tickers if ticker['symbol'].endswith('USDT')
-    ]
-    volumes.sort(key=lambda x: x[1], reverse=True)
+def fetch_trades(symbol, start_str, end_str):
+    trades = client.get_historical_klines(symbol, Client.KLINE_INTERVAL_1MINUTE, start_str, end_str)
+    return trades
 
-    # 返回前 25 个交易对
-    return volumes[:25]
+def save_to_csv(symbol, trades, date_str):
+    # file_name = f"/training/Data/binanceData/high_frequency/{symbol}_{date_str}.csv"
+    file_name = f"{symbol}_{date_str}.csv"
 
-def get_hourly_volume_data_for_pair(symbol, threshold_volume, threshold_amplitude):
-    """ 获取前一天每个小时的交易量数据 """
-    yesterday = datetime.utcnow() - timedelta(days=1)
-    start_str = yesterday.strftime('%Y-%m-%d 00:00:00')
-    end_str = yesterday.strftime('%Y-%m-%d 23:59:59')
+    with open(file_name, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        # 如果是文件的开始，则写入标题
+        if file.tell() == 0:
+            writer.writerow(['Time', 'Open', 'High', 'Low', 'Close', 'Volume'])
+        # 写入数据
+        for trade in trades:
+            time = datetime.fromtimestamp(trade[0] / 1000).strftime('%Y-%m-%d %H:%M:%S')
+            writer.writerow([time, trade[1], trade[2], trade[3], trade[4], trade[5]])
 
-    klines = client.get_historical_klines(symbol, Client.KLINE_INTERVAL_1HOUR, start_str, end_str)
+def process_data(symbol, trades, date_str):
+    continuous_hours = []
+    for i in range(0, len(trades) - 59):
+        hour_volume = sum(float(trade[5]) for trade in trades[i:i+60])
+        hour_high = max(float(trade[2]) for trade in trades[i:i+60])
+        hour_low = min(float(trade[3]) for trade in trades[i:i+60])
+        hour_open = float(trades[i][1])
+        hour_close = float(trades[i+59][4])
 
-    significant_times = []
-    for kline in klines:
-        open_time = datetime.fromtimestamp(kline[0] / 1000)
-        volume = float(kline[5])
-        high_price = float(kline[2])
-        low_price = float(kline[3])
-        amplitude = (high_price - low_price) / low_price
+        amplitude = (hour_high - hour_low) / hour_open
 
-        if volume >= threshold_volume and amplitude >= threshold_amplitude:
-            significant_times.append(open_time.strftime('%Y-%m-%d %H:%M:%S'))
+        if hour_volume >= THRESHOLD_VOLUME and amplitude >= THRESHOLD_AMPLITUDE:
+            continuous_hours.append(trades[i:i+60])
+        elif continuous_hours:
+            # 如果连续小时结束，保存并重置列表
+            all_trades = [item for sublist in continuous_hours for item in sublist]
+            save_to_csv(symbol, all_trades, date_str)
+            continuous_hours = []
 
-    return significant_times
-
-def save_minute_data_to_csv(symbol, start_time):
-    """ 保存特定时段的分钟级别数据到 CSV 文件 """
-    end_time = start_time + timedelta(hours=1)
-
-    klines = client.get_historical_klines(symbol, Client.KLINE_INTERVAL_1MINUTE, start_time.strftime('%Y-%m-%d %H:%M:%S'), end_time.strftime('%Y-%m-%d %H:%M:%S'))
-
-    with open(f'{symbol}_minute_data.csv', 'w', newline='') as csvfile:
-        fieldnames = ['open_time', 'open', 'high', 'low', 'close', 'volume']
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
-        writer.writeheader()
-        for kline in klines:
-            writer.writerow({
-                'open_time': datetime.fromtimestamp(kline[0] / 1000).strftime('%Y-%m-%d %H:%M:%S'),
-                'open': kline[1],
-                'high': kline[2],
-                'low': kline[3],
-                'close': kline[4],
-                'volume': kline[5],
-            })
+    # 检查并保存最后一个连续小时数据
+    if continuous_hours:
+        all_trades = [item for sublist in continuous_hours for item in sublist]
+        save_to_csv(symbol, all_trades, date_str)
+        print(f'Saved minute data for {symbol}.')
 
 # 主执行流程
 if __name__ == "__main__":
-    try:
-        top_pairs = get_top_volume_pairs()
-        for symbol, volume in top_pairs:
-            print(f'Checking {symbol}...')
-            significant_times = get_hourly_volume_data_for_pair(symbol, threshold_volume=100000, threshold_amplitude=0.01)  # 阈值需根据实际情况设置
-            for time in significant_times:
-                time = datetime.strptime(time, '%Y-%m-%d %H:%M:%S')
-                save_minute_data_to_csv(symbol, time)
-                print(f'Saved minute data for {symbol} at {time}.')
+    previous_day = datetime.utcnow() - timedelta(days=1)
+    date_str = previous_day.strftime('%Y%m%d')
+    start_str = previous_day.strftime('%d %b, %Y 00:00:00')
+    end_str = (previous_day + timedelta(days=1)).strftime('%d %b, %Y 00:00:00')
 
-        print('All done!')
+    top_symbols = get_previous_day_tickers()
 
-    except BinanceAPIException as e:
-        print(f"An exception occurred: {e}")
+    for symbol in top_symbols:
+        print(f'Checking {symbol}...')
+        try:
+            trades = fetch_trades(symbol, start_str, end_str)
+            process_data(symbol, trades, date_str)
+        except BinanceAPIException as e:
+            print(f"API Exception for {symbol}: {e}")
