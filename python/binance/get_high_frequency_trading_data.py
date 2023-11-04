@@ -2,6 +2,7 @@ import csv
 from datetime import datetime, timedelta
 from binance.client import Client
 from binance.exceptions import BinanceAPIException
+import os
 
 # Binance API 密钥
 api_key = 'YOUR_API_KEY'
@@ -25,9 +26,30 @@ def fetch_trades(symbol, start_str, end_str):
     trades = client.get_historical_klines(symbol, Client.KLINE_INTERVAL_1MINUTE, start_str, end_str)
     return trades
 
+def check_existing_data(file_name, last_data):
+    try:
+        with open(file_name, 'r') as file:
+            for line in reversed(list(csv.reader(file))):
+                if line[0] == last_data:
+                    return True
+        return False
+    except FileNotFoundError:
+        return False
+
 def save_to_csv(symbol, trades, date_str):
     # file_name = f"/training/Data/binanceData/high_frequency/{symbol}_{date_str}.csv"
     file_name = f"{symbol}_{date_str}.csv"
+    last_data_time = None
+
+    # 检查文件是否存在并找到最后一条数据的时间
+    if os.path.exists(file_name):
+        with open(file_name, 'r') as file:
+            csv_reader = csv.reader(file)
+            last_row = None
+            for last_row in csv_reader:
+                pass
+            if last_row:
+                last_data_time = last_row[0]
 
     with open(file_name, mode='a', newline='') as file:
         writer = csv.writer(file)
@@ -36,8 +58,11 @@ def save_to_csv(symbol, trades, date_str):
             writer.writerow(['Time', 'Open', 'High', 'Low', 'Close', 'Volume'])
         # 写入数据
         for trade in trades:
-            time = datetime.fromtimestamp(trade[0] / 1000).strftime('%Y-%m-%d %H:%M:%S')
-            writer.writerow([time, trade[1], trade[2], trade[3], trade[4], trade[5]])
+            trade_time = datetime.fromtimestamp(trade[0] / 1000).strftime('%Y-%m-%d %H:%M:%S')
+            # 如果数据时间大于上次保存的最后时间，则保存数据
+            if not last_data_time or trade_time > last_data_time:
+                writer.writerow([trade_time, trade[1], trade[2], trade[3], trade[4], trade[5]])
+
 
 def process_data(symbol, trades, date_str):
     continuous_hours = []
@@ -56,6 +81,7 @@ def process_data(symbol, trades, date_str):
             # 如果连续小时结束，保存并重置列表
             all_trades = [item for sublist in continuous_hours for item in sublist]
             save_to_csv(symbol, all_trades, date_str)
+            print(f'Saved minute data for {symbol}.')
             continuous_hours = []
 
     # 检查并保存最后一个连续小时数据
