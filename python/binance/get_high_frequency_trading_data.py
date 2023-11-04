@@ -15,6 +15,17 @@ client = Client(api_key, api_secret)
 THRESHOLD_VOLUME = 50000000
 THRESHOLD_AMPLITUDE = 0.02
 
+def get_historical_funding_rates(symbol, limit=500):
+    """
+    获取指定交易对的历史资金费率。
+
+    :param symbol: 交易对，例如 'BTCUSDT'
+    :param limit: 获取记录的数量，默认为500，最大可为1000
+    :return: 资金费率的历史记录
+    """
+    funding_rates = client.futures_funding_rate(symbol=symbol, limit=limit)
+    return funding_rates
+
 def get_previous_day_tickers():
     tickers = client.get_ticker()
     usdt_pairs = [ticker for ticker in tickers if ticker['symbol'].endswith('USDT')]
@@ -55,17 +66,19 @@ def save_to_csv(symbol, trades, date_str):
         writer = csv.writer(file)
         # 如果是文件的开始，则写入标题
         if file.tell() == 0:
-            writer.writerow(['Time', 'Open', 'High', 'Low', 'Close', 'Volume'])
+            # columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'])
+            writer.writerow(['Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'QuoteAssetVolum', 'NumberOfTrades'])
         # 写入数据
         for trade in trades:
             trade_time = datetime.fromtimestamp(trade[0] / 1000).strftime('%Y-%m-%d %H:%M:%S')
             # 如果数据时间大于上次保存的最后时间，则保存数据
             if not last_data_time or trade_time > last_data_time:
-                writer.writerow([trade_time, trade[1], trade[2], trade[3], trade[4], trade[5]])
+                writer.writerow([trade_time, trade[1], trade[2], trade[3], trade[4], trade[5], trade[7], trade[8]])
 
 
 def process_data(symbol, trades, date_str):
     continuous_hours = []
+    saved = False
     for i in range(0, len(trades) - 59):
         hour_volume = sum(float(trade[5]) for trade in trades[i:i+60])
         hour_high = max(float(trade[2]) for trade in trades[i:i+60])
@@ -77,17 +90,14 @@ def process_data(symbol, trades, date_str):
 
         if hour_volume >= THRESHOLD_VOLUME and amplitude >= THRESHOLD_AMPLITUDE:
             continuous_hours.append(trades[i:i+60])
-        elif continuous_hours:
+        if continuous_hours:
+            saved = True
             # 如果连续小时结束，保存并重置列表
             all_trades = [item for sublist in continuous_hours for item in sublist]
             save_to_csv(symbol, all_trades, date_str)
-            print(f'Saved minute data for {symbol}.')
             continuous_hours = []
 
-    # 检查并保存最后一个连续小时数据
-    if continuous_hours:
-        all_trades = [item for sublist in continuous_hours for item in sublist]
-        save_to_csv(symbol, all_trades, date_str)
+    if saved:
         print(f'Saved minute data for {symbol}.')
 
 # 主执行流程
@@ -106,3 +116,4 @@ if __name__ == "__main__":
             process_data(symbol, trades, date_str)
         except BinanceAPIException as e:
             print(f"API Exception for {symbol}: {e}")
+    print("finish")
