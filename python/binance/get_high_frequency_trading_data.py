@@ -26,6 +26,11 @@ def get_historical_funding_rates(symbol, limit=500):
     funding_rates = client.futures_funding_rate(symbol=symbol, limit=limit)
     return funding_rates
 
+def get_open_futures_positions(symbol):
+    # 获取未平仓的期货合约
+    position_info = client.futures_position_information(symbol=symbol)
+    return position_info
+
 def get_previous_day_tickers():
     tickers = client.get_ticker()
     usdt_pairs = [ticker for ticker in tickers if ticker['symbol'].endswith('USDT')]
