@@ -46,6 +46,48 @@ def process_data(file_path):
 
     return data
 
+# Function to process a single file with consideration for time gaps
+def process_file_with_time_gaps(file_path):
+    # Load data
+    data = load_data(file_path)
+
+    # Convert 'Time' column to datetime
+    data['Time'] = pd.to_datetime(data['Time'])
+
+    # Sort the data by time just in case it's not in order
+    data.sort_values('Time', inplace=True)
+
+    # Initialize an empty DataFrame to store processed data
+    processed_data = pd.DataFrame()
+
+    # Process each segment of continuous data
+    start_idx = 0
+    for i in range(1, len(data)):
+        # Check for a time gap greater than 1 minute
+        if (data['Time'].iloc[i] - data['Time'].iloc[i - 1]) > pd.Timedelta(minutes=1):
+            # Process the continuous segment
+            continuous_data = data.iloc[start_idx:i]
+            continuous_data = calculate_moving_averages(continuous_data)
+            continuous_data['RSI_14'] = calculate_rsi(continuous_data)
+            continuous_data = calculate_macd(continuous_data)
+
+            # Append the processed segment to the full processed data
+            processed_data = processed_data.append(continuous_data, ignore_index=True)
+
+            # Update the start index for the next segment
+            start_idx = i
+
+    # Process the final segment
+    final_segment = data.iloc[start_idx:]
+    final_segment = calculate_moving_averages(final_segment)
+    final_segment['RSI_14'] = calculate_rsi(final_segment)
+    final_segment = calculate_macd(final_segment)
+
+    # Append the final processed segment
+    processed_data = processed_data.append(final_segment, ignore_index=True)
+
+    return processed_data
+
 # Main function to process all CSV files in the given directory
 def process_all_csv_in_directory(directory_path):
     # Iterate over all files in the directory
@@ -57,7 +99,7 @@ def process_all_csv_in_directory(directory_path):
             # Process each file
             try:
                 print(f"Processing file: {file_name}")
-                data = process_data(file_path)
+                data = process_file_with_time_gaps(file_path)
 
                 # Save the processed data to a new CSV file
                 save_path = os.path.join(directory_path, f"processed_{file_name}")
