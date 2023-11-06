@@ -52,6 +52,26 @@ def process_data(file_path):
     return data
 
 
+def add_future_high_low(data, future_periods=10):
+    # Calculate future high and low relative to the current open price
+    # Avoid division by zero by replacing 0 with NaN and then backfilling with the next valid open price
+    open_prices = data['Open'].replace(0, pd.NA).bfill()
+
+    # Calculate the future high and low within the next 10 minutes
+    future_highs = data['High'].rolling(window=future_periods, min_periods=1).max().shift(-future_periods)
+    future_lows = data['Low'].rolling(window=future_periods, min_periods=1).min().shift(-future_periods)
+
+    # Calculate the expected high and low increases as a percentage
+    data['Expected_High_Increase'] = (future_highs - open_prices) / open_prices
+    data['Expected_Low_Increase'] = (future_lows - open_prices) / open_prices
+
+    # Fill any remaining NaN values that may have been caused by the shift operation (at the end of the DataFrame)
+    data['Expected_High_Increase'].fillna(method='ffill', inplace=True)
+    data['Expected_Low_Increase'].fillna(method='ffill', inplace=True)
+
+    return data
+
+
 # Function to process a single file with consideration for time gaps
 def process_file_with_time_gaps(file_path):
     # Load data
@@ -77,6 +97,7 @@ def process_file_with_time_gaps(file_path):
             continuous_data = calculate_moving_averages(continuous_data)
             continuous_data['RSI_14'] = calculate_rsi(continuous_data)
             continuous_data = calculate_macd(continuous_data)
+            continuous_data = add_future_high_low(continuous_data)
 
             # Append the processed segment to the full processed data
             processed_data = pd.concat([processed_data, continuous_data], ignore_index=True)
@@ -90,6 +111,7 @@ def process_file_with_time_gaps(file_path):
     final_segment = calculate_moving_averages(final_segment)
     final_segment['RSI_14'] = calculate_rsi(final_segment)
     final_segment = calculate_macd(final_segment)
+    final_segment = add_future_high_low(final_segment)
 
     # Append the final processed segment
     processed_data = pd.concat([processed_data, final_segment], ignore_index=True)
@@ -98,12 +120,12 @@ def process_file_with_time_gaps(file_path):
 
 
 # Main function to process all CSV files in the given directory
-def process_all_csv_in_directory(directory_path):
+def process_all_csv_in_directory(input_path, output_path):
     # Iterate over all files in the directory
-    for file_name in os.listdir(directory_path):
+    for file_name in os.listdir(input_path):
         # Check if the file is a CSV file
         if file_name.endswith('.csv'):
-            file_path = os.path.join(directory_path, file_name)
+            file_path = os.path.join(input_path, file_name)
 
             # Process each file
             try:
@@ -111,7 +133,7 @@ def process_all_csv_in_directory(directory_path):
                 data = process_file_with_time_gaps(file_path)
 
                 # Save the processed data to a new CSV file
-                save_path = os.path.join(directory_path, f"processed_{file_name}")
+                save_path = os.path.join(output_path, f"processed_{file_name}")
                 data.to_csv(save_path, index=False)
                 print(f"Processed data saved to: {save_path}")
             except Exception as e:
@@ -119,6 +141,46 @@ def process_all_csv_in_directory(directory_path):
 
 
 # Example usage:
-directory_path = '/training/Data/binanceData/high_frequency'  # Replace with your actual directory path
-process_all_csv_in_directory(directory_path)
+input_path = '/training/Data/binanceData/high_frequency/collected'  # Replace with your actual directory path
+output_path = '/training/Data/binanceData/high_frequency/processed'  # Replace with your directory path
+process_all_csv_in_directory(input_path, output_path)
 print("complete")
+
+import pandas as pd
+import os
+from scipy.stats import zscore
+from glob import glob
+
+# Define the input and output directories
+input_directory = '/training/Data/binanceData/high_frequency/processed'
+output_directory = '/training/Data/binanceData/high_frequency/train'
+
+# Make sure the output directory exists
+os.makedirs(output_directory, exist_ok=True)
+
+# List all CSV files in the input directory
+csv_files = glob(os.path.join(input_directory, '*.csv'))
+
+# Process each file
+for file_path in csv_files:
+    try:
+        print(f"Processing file: {file_path}")
+        # Load the data
+        data = pd.read_csv(file_path)
+
+        # Drop rows with any NaN values and create a copy to avoid SettingWithCopyWarning
+        data_cleaned = data.dropna().copy()
+
+        # Apply Z-Score normalization to all columns except 'Time' and future price columns
+        cols_to_normalize = data_cleaned.columns.difference(['Time', 'Future_High', 'Future_Low'])
+        data_cleaned.loc[:, cols_to_normalize] = data_cleaned.loc[:, cols_to_normalize].apply(zscore)
+
+        # Define the output file path
+        output_file_path = os.path.join(output_directory, os.path.basename(file_path))
+
+        # Save the cleaned data to the output directory
+        data_cleaned.to_csv(output_file_path, index=False)
+        print(f"File processed and saved to: {output_file_path}")
+
+    except Exception as e:
+        print(f"An error occurred while processing {file_path}: {e}")

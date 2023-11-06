@@ -72,13 +72,13 @@ def save_to_csv(symbol, trades, date_str):
         # 如果是文件的开始，则写入标题
         if file.tell() == 0:
             # columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'])
-            writer.writerow(['Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'QuoteAssetVolum', 'NumberOfTrades'])
+            writer.writerow(['Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'NumberOfTrades'])
         # 写入数据
         for trade in trades:
             trade_time = datetime.fromtimestamp(trade[0] / 1000).strftime('%Y-%m-%d %H:%M:%S')
             # 如果数据时间大于上次保存的最后时间，则保存数据
             if not last_data_time or trade_time > last_data_time:
-                writer.writerow([trade_time, trade[1], trade[2], trade[3], trade[4], trade[5], trade[7], trade[8]])
+                writer.writerow([trade_time, trade[1], trade[2], trade[3], trade[4], trade[5], trade[8]])
 
 
 def process_data(symbol, trades, date_str):
