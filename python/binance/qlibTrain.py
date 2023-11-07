@@ -1,66 +1,193 @@
 import pandas as pd
 
-# 读取并合并所有CSV文件
-csv_files = [
-    'path_to_your_data/processed_BAKEUSDT_20231105.csv',
-    'path_to_your_data/processed_BSWUSDT_20231105.csv',
-    'path_to_your_data/processed_CHZUSDT_20231105.csv',
-    # ... 其他文件路径
-]
-combined_df = pd.concat((pd.read_csv(file) for file in csv_files), ignore_index=True)
+# 加载数据
+file_path = '/training/Data/binanceData/high_frequency/train/combined_csv.csv'
+data = pd.read_csv(file_path)
 
-# 确保时间戳的格式是正确的，并将其设置为索引
-combined_df['Time'] = pd.to_datetime(combined_df['Time'])
-combined_df.set_index('Time', inplace=True)
+# 显示数据框的前几行
+data.head()
 
-# 分离特征和目标变量
-features = combined_df.drop(columns=['Expected_High_Increase', 'Expected_Low_Increase'])
-targets = combined_df[['Expected_High_Increase', 'Expected_Low_Increase']]
+from datetime import datetime, timedelta
 
-# 保存处理后的特征和目标变量
-features.to_csv('path_to_your_data/processed_features.csv')
-targets.to_csv('path_to_your_data/processed_targets.csv')
+# 将时间列转换为日期时间
+data['Time'] = pd.to_datetime(data['Time'])
 
-# ############################
 
-import qlib
-from qlib.config import REG_CN
-from qlib.data.dataset import DatasetH
-from qlib.data.dataset.handler import DataHandlerLP
-from qlib.contrib.model.pytorch_lstm import LSTMModel
-from qlib.contrib.data.handler import QLibDataHandler
-from qlib.contrib.estimator.handler import LGBModelHandler
+# 将数据帧拆分为数据帧列表的函数，其中每个数据帧都是连续的时间序列
+def split_sequences(df, time_diff_threshold='2min'):
+    """
+    将 DataFrame 拆分为连续序列的列表。
 
-# 初始化Qlib
-qlib.init(provider_uri='./data', region=REG_CN)  # 设置你的数据提供者路径
+    参数:
+    - df: pd.DataFrame, 要分割的数据框
+    - time_diff_threshold: str, 考虑序列中断的时间差阈值
 
-# 加载特征和目标变量数据
-features = pd.read_csv('path_to_your_data/processed_features.csv', index_col='datetime')
-targets = pd.read_csv('path_to_your_data/processed_targets.csv', index_col='datetime')
+    Returns:
+    - list of pd.DataFrame, 其中每个数据帧是一个连续序列
+    """
+    sequences = []
+    current_sequence = [df.iloc[0].to_dict()]  # 从第一行作为字典开始
 
-# 定义数据处理器
-handler_config = {
-    "start_time": "2023-01-01",  # 根据你的数据设置合适的时间
-    "end_time": "2023-12-31",    # 根据你的数据设置合适的时间
-    "fit_start_time": "2023-01-01",  # 根据你的数据设置合适的时间
-    "fit_end_time": "2023-10-31",    # 根据你的数据设置合适的时间
-    "instruments": "csi1000"
-}
+    # 迭代数据框
+    for _, row in df.iterrows():
+        row = row.to_dict()  # 将行转换为字典
+        # 如果时间差小于或等于阈值，则追加到当前序列
+        if (row['Time'] - current_sequence[-1]['Time']) <= pd.Timedelta(time_diff_threshold):
+            current_sequence.append(row)
+        else:
+            # 否则，开始一个新的序列
+            sequences.append(pd.DataFrame(current_sequence))
+            current_sequence = [row]
+    sequences.append(pd.DataFrame(current_sequence))  # 添加最后一个序列
 
-# 创建数据集
-dataset = DatasetH(
-    handler=DataHandlerLP(data=features.join(targets)),
-    segments=handler_config
-)
+    return sequences
 
-# 定义LSTM模型
-model = LSTMModel()
 
-# 训练模型
-model.fit(dataset)
+# 根据时间列拆分序列
+sequences = split_sequences(data)
 
-# 保存模型
-model.save('path_to_your_model/lstm_model.bin')
+# 显示我们有多少个序列以及第一个序列的第一行
+len(sequences), sequences[0].head()
 
-# 进行预测
-pred = model.predict(dataset)
+from sklearn.model_selection import train_test_split
+import numpy as np
+
+
+# 使用相应标签创建序列滑动窗口的函数
+def create_sliding_windows(sequences, input_window=15, output_window=10):
+    X, y = [], []
+    for sequence in sequences:
+        # 删除训练时间列
+        sequence = sequence.drop('Time', axis=1).values
+        # 创建滑动窗口
+        for i in range(len(sequence) - input_window - output_window):
+            X.append(sequence[i:(i + input_window)])
+            # 标签是未来10分钟预计的高点和低点涨幅
+            future_slice = sequence[(i + input_window):(i + input_window + output_window)]
+            y.append([
+                future_slice[:, -2].max(),  # Expected_High_Increase
+                future_slice[:, -1].min()  # Expected_Low_Increase
+            ])
+    return np.array(X), np.array(y)
+
+
+# 为每个序列创建滑动窗口
+# 现在 numpy 已导入，重新运行 create_sliding_windows 函数
+X, y = create_sliding_windows(sequences)
+
+# 将数据分为训练集和测试集
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+X_train.shape, y_train.shape, X_test.shape, y_test.shape
+
+import torch
+import torch.nn as nn
+
+# 将设备设置为 GPU（如果可用）
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+# 定义 LSTM 模型
+class LSTMModel(nn.Module):
+    def __init__(self, input_size, hidden_layer_size, output_size):
+        super().__init__()
+        self.hidden_layer_size = hidden_layer_size
+
+        self.lstm = nn.LSTM(input_size, hidden_layer_size)
+
+        self.linear = nn.Linear(hidden_layer_size, output_size)
+
+        self.hidden_cell = (torch.zeros(1, 1, self.hidden_layer_size).to(device),
+                            torch.zeros(1, 1, self.hidden_layer_size).to(device))
+
+    def forward(self, input_seq):
+        lstm_out, self.hidden_cell = self.lstm(input_seq.view(len(input_seq), 1, -1), self.hidden_cell)
+        predictions = self.linear(lstm_out.view(len(input_seq), -1))
+        return predictions[-1]
+
+
+# 实例化模型
+input_size = X_train.shape[2]  # 特征数量
+hidden_layer_size = 100
+output_size = 2  # 预期高增长和低增长
+
+model = LSTMModel(input_size, hidden_layer_size, output_size)
+model = model.to(device)
+
+# 显示模型架构
+model
+
+# 定义损失函数和优化器
+loss_function = nn.MSELoss()
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+
+
+# 将数据转换为张量的函数
+def create_inout_sequences(input_data, output_data):
+    inout_seq = []
+    for i in range(len(input_data)):
+        train_seq = torch.FloatTensor(input_data[i]).to(device)
+        train_label = torch.FloatTensor(output_data[i]).to(device)
+        inout_seq.append((train_seq, train_label))
+    return inout_seq
+
+
+# 将训练数据转换为张量
+train_inout_seq = create_inout_sequences(X_train, y_train)
+
+# 将测试数据转换为张量
+test_inputs = torch.FloatTensor(X_test).to(device)
+test_labels = torch.FloatTensor(y_test).to(device)
+
+# 重塑输入以匹配模型的预期输入
+test_inputs = test_inputs.view(test_inputs.size(0), -1, input_size)
+
+# 将模型设置为评估模式
+model.eval()
+
+# 评估不需要梯度
+with torch.no_grad():
+    # 初始化隐藏状态
+    model.hidden_cell = (torch.zeros(1, 1, model.hidden_layer_size).to(device),
+                         torch.zeros(1, 1, model.hidden_layer_size).to(device))
+
+    # 迭代每个示例（为简单起见，假设批量大小为 1）
+    predictions = []
+    for i in range(test_inputs.size(0)):
+        single_prediction = model(test_inputs[i])
+        predictions.append(single_prediction)
+
+    test_predictions = torch.stack(predictions)
+
+# 计算测试数据的损失
+test_loss = loss_function(test_predictions, test_labels)
+print(f'Test Loss: {test_loss.item()}')
+
+import matplotlib.pyplot as plt
+
+# 将预测和标签转换为 numpy 以进行绘图
+test_predictions_np = test_predictions.numpy()
+test_labels_np = test_labels.numpy()
+
+# 绘制预测的高点增长和真实的高点增长
+plt.figure(figsize=(14, 5))
+plt.subplot(1, 2, 1)
+# 预计最高涨幅
+plt.plot(test_predictions_np[:, 0], label='Predicted High Increase')
+# 真正的最高涨幅
+plt.plot(test_labels_np[:, 0], label='True High Increase')
+# 最高涨幅的预测值与真实值比较
+plt.title('Comparison of Predictions and True Values for High Increase')
+plt.legend()
+
+# 绘制预测最低涨幅和真实最低涨幅
+plt.subplot(1, 2, 2)
+# 预计最低涨幅
+plt.plot(test_predictions_np[:, 1], label='Predicted Low Increase')
+# 真正的最低涨幅
+plt.plot(test_labels_np[:, 1], label='True Low Increase')
+# 最低涨幅的预测值与真实值比较
+plt.title('Comparison of Predictions and True Values for Low Increase')
+plt.legend()
+
+plt.show()

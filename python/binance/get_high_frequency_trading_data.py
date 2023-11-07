@@ -12,8 +12,8 @@ api_secret = 'YOUR_API_SECRET'
 client = Client(api_key, api_secret)
 
 # 设置阈值
-THRESHOLD_VOLUME = 25000000
-THRESHOLD_AMPLITUDE = 0.05
+THRESHOLD_VOLUME = 30000000
+THRESHOLD_AMPLITUDE = 0.03
 
 def get_historical_funding_rates(symbol, limit=500):
     """
