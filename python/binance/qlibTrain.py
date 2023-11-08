@@ -135,6 +135,26 @@ def create_inout_sequences(input_data, output_data):
 # 将训练数据转换为张量
 train_inout_seq = create_inout_sequences(X_train, y_train)
 
+# 训练模型
+epochs = 10
+
+for i in range(epochs):
+    for seq, labels in train_inout_seq:
+        optimizer.zero_grad()
+        model.hidden_cell = (torch.zeros(1, 1, model.hidden_layer_size).to(device),
+                             torch.zeros(1, 1, model.hidden_layer_size).to(device))
+
+        y_pred = model(seq)
+
+        single_loss = loss_function(y_pred, labels)
+        single_loss.backward()
+        optimizer.step()
+
+    if i % 25 == 1:
+        print(f'epoch: {i:3} loss: {single_loss.item():10.8f}')
+
+print(f'epoch: {i:3} loss: {single_loss.item():10.10f}')
+
 # 将测试数据转换为张量
 test_inputs = torch.FloatTensor(X_test).to(device)
 test_labels = torch.FloatTensor(y_test).to(device)
