@@ -2,12 +2,12 @@ import os
 import pandas as pd
 
 
-# Function to load the data
+# 加载数据
 def load_data(file_path):
     return pd.read_csv(file_path)
 
 
-# Function to calculate SMAs and EMAs
+# 计算 SMA 和 EMA
 def calculate_moving_averages(data, short_window=5, long_window=10):
     data['SMA_5'] = data['Close'].rolling(window=short_window).mean()
     data['SMA_10'] = data['Close'].rolling(window=long_window).mean()
@@ -16,7 +16,7 @@ def calculate_moving_averages(data, short_window=5, long_window=10):
     return data
 
 
-# Function to calculate RSI
+# 计算相对强弱指数
 def calculate_rsi(data, window=14):
     delta = data['Close'].diff()
     gain = (delta.where(delta > 0, 0)).fillna(0)
@@ -28,111 +28,111 @@ def calculate_rsi(data, window=14):
     return rsi
 
 
-# Function to calculate MACD and Signal Line
+# 计算 MACD 和信号线
 def calculate_macd(data):
     data['MACD'] = data['Close'].ewm(span=12, adjust=False).mean() - data['Close'].ewm(span=26, adjust=False).mean()
     data['Signal_Line'] = data['MACD'].ewm(span=9, adjust=False).mean()
     return data
 
 
-# Main function to process the data
+# 处理数据
 def process_data(file_path):
-    # Load data
+    # 加载数据
     data = load_data(file_path)
 
-    # Calculate moving averages
+    # 计算移动平均线
     data = calculate_moving_averages(data)
 
-    # Calculate RSI
+    # 计算相对强弱指数
     data['RSI_14'] = calculate_rsi(data)
 
-    # Calculate MACD and Signal Line
+    # 计算 MACD 和信号线
     data = calculate_macd(data)
 
     return data
 
 
 def add_future_high_low(data, future_periods=10):
-    # Calculate future high and low relative to the current open price
-    # Avoid division by zero by replacing 0 with NaN and then backfilling with the next valid open price
+    # 计算相对于当前开盘价的未来最高价和最低价
+    # 通过用 NaN 替换 0 然后用下一个有效开盘价回填来避免除以零
     open_prices = data['Open'].replace(0, pd.NA).bfill()
 
-    # Calculate the future high and low within the next 10 minutes
+    # 计算未来10分钟内的未来高点和低点
     future_highs = data['High'].rolling(window=future_periods, min_periods=1).max().shift(-future_periods)
     future_lows = data['Low'].rolling(window=future_periods, min_periods=1).min().shift(-future_periods)
 
-    # Calculate the expected high and low increases as a percentage
+    # 计算预期最高和最低涨幅的百分比
     data['Expected_High_Increase'] = (future_highs - open_prices) / open_prices
     data['Expected_Low_Increase'] = (future_lows - open_prices) / open_prices
 
-    # Fill any remaining NaN values that may have been caused by the shift operation (at the end of the DataFrame)
+    # 填充可能由移位操作引起的任何剩余 NaN 值（在 DataFrame 的末尾）
     data['Expected_High_Increase'].fillna(method='ffill', inplace=True)
     data['Expected_Low_Increase'].fillna(method='ffill', inplace=True)
 
     return data
 
 
-# Function to process a single file with consideration for time gaps
+# 处理单个文件时考虑时间间隙
 def process_file_with_time_gaps(file_path):
-    # Load data
+    # 加载数据
     data = load_data(file_path)
 
-    # Convert 'Time' column to datetime
+    # 将“时间”列转换为日期时间
     data['Time'] = pd.to_datetime(data['Time'])
 
-    # Sort the data by time just in case it's not in order
+    # 按时间对数据进行排序，以防数据不按顺序排列
     data.sort_values('Time', inplace=True)
 
-    # Initialize an empty DataFrame to store processed data
+    # 初始化一个空的DataFrame来存储处理后的数据
     processed_data = pd.DataFrame()
 
-    # Process each segment of continuous data
+    # 处理每段连续数据
     start_idx = 0
     for i in range(1, len(data)):
-        # Check for a time gap greater than 1 minute
+        # 检查时间间隔是否大于 1 分钟
         if (data['Time'].iloc[i] - data['Time'].iloc[i - 1]) > pd.Timedelta(minutes=1):
-            # Process the continuous segment
-            # Make an explicit copy of the segment to avoid SettingWithCopyWarning
+            # 处理连续段
+            # 制作该段的显式副本以避免 SettingWithCopyWarning
             continuous_data = data.iloc[start_idx:i].copy()
             continuous_data = calculate_moving_averages(continuous_data)
             continuous_data['RSI_14'] = calculate_rsi(continuous_data)
             continuous_data = calculate_macd(continuous_data)
             continuous_data = add_future_high_low(continuous_data)
 
-            # Append the processed segment to the full processed data
+            # 将处理后的段附加到完整处理的数据中
             processed_data = pd.concat([processed_data, continuous_data], ignore_index=True)
 
-            # Update the start index for the next segment
+            # 更新下一个段的起始索引
             start_idx = i
 
-    # Process the final segment
-    # Make an explicit copy of the segment to avoid SettingWithCopyWarning
+    # 处理最后一段
+    # 制作该段的显式副本以避免 SettingWithCopyWarning
     final_segment = data.iloc[start_idx:].copy()
     final_segment = calculate_moving_averages(final_segment)
     final_segment['RSI_14'] = calculate_rsi(final_segment)
     final_segment = calculate_macd(final_segment)
     final_segment = add_future_high_low(final_segment)
 
-    # Append the final processed segment
+    # 附加最终处理的段
     processed_data = pd.concat([processed_data, final_segment], ignore_index=True)
 
     return processed_data
 
 
-# Main function to process all CSV files in the given directory
+# 处理给定目录中的所有 CSV 文件
 def process_all_csv_in_directory(input_path, output_path):
-    # Iterate over all files in the directory
+    # 遍历目录中的所有文件
     for file_name in os.listdir(input_path):
-        # Check if the file is a CSV file
+        # 检查文件是否为 CSV 文件
         if file_name.endswith('.csv'):
             file_path = os.path.join(input_path, file_name)
 
-            # Process each file
+            # 处理每个文件
             try:
                 print(f"Processing file: {file_name}")
                 data = process_file_with_time_gaps(file_path)
 
-                # Save the processed data to a new CSV file
+                # 将处理后的数据保存到新的 CSV 文件中
                 save_path = os.path.join(output_path, f"processed_{file_name}")
                 data.to_csv(save_path, index=False)
                 print(f"Processed data saved to: {save_path}")
@@ -140,9 +140,8 @@ def process_all_csv_in_directory(input_path, output_path):
                 print(f"Failed to process file: {file_name}. Error: {e}")
 
 
-# Example usage:
-input_path = '/training/Data/binanceData/high_frequency/collected'  # Replace with your actual directory path
-output_path = '/training/Data/binanceData/high_frequency/processed'  # Replace with your directory path
+input_path = '/training/Data/binanceData/high_frequency/collected'
+output_path = '/training/Data/binanceData/high_frequency/processed'
 process_all_csv_in_directory(input_path, output_path)
 print("complete")
 
@@ -151,34 +150,34 @@ import os
 from scipy.stats import zscore
 from glob import glob
 
-# Define the input and output directories
+# 定义输入和输出目录
 input_directory = '/training/Data/binanceData/high_frequency/processed'
 output_directory = '/training/Data/binanceData/high_frequency/train'
 
-# Make sure the output directory exists
+# 确保输出目录存在
 os.makedirs(output_directory, exist_ok=True)
 
-# List all CSV files in the input directory
+# 列出输入目录中的所有 CSV 文件
 csv_files = glob(os.path.join(input_directory, '*.csv'))
 
-# Process each file
+# 处理每个文件
 for file_path in csv_files:
     try:
         print(f"Processing file: {file_path}")
-        # Load the data
+        # 加载数据
         data = pd.read_csv(file_path)
 
-        # Drop rows with any NaN values and create a copy to avoid SettingWithCopyWarning
+        # 删除具有任何 NaN 值的行并创建副本以避免 SettingWithCopyWarning
         data_cleaned = data.dropna().copy()
 
-        # Apply Z-Score normalization to all columns except 'Time' and future price columns
+        # 将 Z-Score 标准化应用于除“时间”和未来价格列之外的所有列
         cols_to_normalize = data_cleaned.columns.difference(['Time', 'Future_High', 'Future_Low'])
         data_cleaned.loc[:, cols_to_normalize] = data_cleaned.loc[:, cols_to_normalize].apply(zscore)
 
-        # Define the output file path
+        # 定义输出文件路径
         output_file_path = os.path.join(output_directory, os.path.basename(file_path))
 
-        # Save the cleaned data to the output directory
+        # 将清理后的数据保存到输出目录
         data_cleaned.to_csv(output_file_path, index=False)
         print(f"File processed and saved to: {output_file_path}")
 

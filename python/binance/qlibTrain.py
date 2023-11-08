@@ -135,10 +135,17 @@ def create_inout_sequences(input_data, output_data):
 # 将训练数据转换为张量
 train_inout_seq = create_inout_sequences(X_train, y_train)
 
+# 训练和验证损失的记录
+train_losses = []
+test_losses = []
+
 # 训练模型
 epochs = 10
 
 for i in range(epochs):
+    # 将模型设置为训练模式
+    model.train()
+    train_loss = 0.0
     for seq, labels in train_inout_seq:
         optimizer.zero_grad()
         model.hidden_cell = (torch.zeros(1, 1, model.hidden_layer_size).to(device),
@@ -146,14 +153,44 @@ for i in range(epochs):
 
         y_pred = model(seq)
 
-        single_loss = loss_function(y_pred, labels)
-        single_loss.backward()
+        loss = loss_function(y_pred, labels)
+        loss.backward()
         optimizer.step()
 
-    if i % 25 == 1:
-        print(f'epoch: {i:3} loss: {single_loss.item():10.8f}')
+        train_loss += loss.item()
 
-print(f'epoch: {i:3} loss: {single_loss.item():10.10f}')
+    # 记录平均训练损失
+    train_losses.append(train_loss / len(train_inout_seq))
+
+    # 验证损失
+    # 将模型设置为评估模式
+    model.eval()
+    test_loss = 0.0
+    with torch.no_grad():
+        for seq, labels in create_inout_sequences(X_test, y_test):
+            y_test_pred = model(seq)
+            t_loss = loss_function(y_test_pred, labels)
+            test_loss += t_loss.item()
+
+    # 记录平均测试损失
+    test_losses.append(test_loss / len(X_test))
+
+    print(f'Epoch {i} Training Loss: {train_losses[-1]:.4f} Test Loss: {test_losses[-1]:.4f}')
+
+import matplotlib.pyplot as plt
+
+# 绘制训练和测试损失图
+plt.figure(figsize=(12, 6))
+# 训练损失
+plt.plot(train_losses, label='Training Loss')
+# 测试损失
+plt.plot(test_losses, label='Test Loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+# 纪元内的训练和测试损失
+plt.title('Training and Test Loss Over Epochs')
+plt.legend()
+plt.show()
 
 # 将测试数据转换为张量
 test_inputs = torch.FloatTensor(X_test).to(device)
