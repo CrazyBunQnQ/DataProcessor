@@ -109,7 +109,7 @@ class LSTMModel(nn.Module):
 # 实例化模型
 input_size = X_train.shape[2]  # 特征数量
 hidden_layer_size = 100
-output_size = 2  # 预期高增长和低增长
+output_size = 2  # 预期最高涨幅和最低涨幅
 
 model = LSTMModel(input_size, hidden_layer_size, output_size)
 model = model.to(device)
@@ -175,7 +175,7 @@ for i in range(epochs):
     # 记录平均测试损失
     test_losses.append(test_loss / len(X_test))
 
-    print(f'Epoch {i} Training Loss: {train_losses[-1]:.4f} Test Loss: {test_losses[-1]:.4f}')
+    print(f'Epoch {i} Training Loss: {train_losses[-1]:.6f} Test Loss: {test_losses[-1]:.6f}')
 
 import matplotlib.pyplot as plt
 
@@ -248,3 +248,24 @@ plt.title('Comparison of Predictions and True Values for Low Increase')
 plt.legend()
 
 plt.show()
+
+
+# 保存模型
+import datetime
+import os
+
+# 以 YYYYMMDD 格式获取当前日期
+today = datetime.datetime.now().strftime("%Y%m%d")
+
+# 如果目录不存在，请创建该目录
+model_directory = '/training/Models/CrazyTrades'
+os.makedirs(model_directory, exist_ok=True)
+
+# 使用日期后缀定义路径
+model_save_path = os.path.join(model_directory, f'lstm_{today}.pth')
+# 保存经过训练的模型
+torch.save(model.state_dict(), model_save_path)
+
+# 输出模型保存路径
+print(f"Model saved to {model_save_path}")
+

@@ -2,11 +2,6 @@ import os
 import pandas as pd
 
 
-# 加载数据
-def load_data(file_path):
-    return pd.read_csv(file_path)
-
-
 # 计算 SMA 和 EMA
 def calculate_moving_averages(data, short_window=5, long_window=10):
     data['SMA_5'] = data['Close'].rolling(window=short_window).mean()
@@ -38,7 +33,7 @@ def calculate_macd(data):
 # 处理数据
 def process_data(file_path):
     # 加载数据
-    data = load_data(file_path)
+    data = pd.read_csv(file_path)
 
     # 计算移动平均线
     data = calculate_moving_averages(data)
@@ -75,7 +70,7 @@ def add_future_high_low(data, future_periods=10):
 # 处理单个文件时考虑时间间隙
 def process_file_with_time_gaps(file_path):
     # 加载数据
-    data = load_data(file_path)
+    data = pd.read_csv(file_path)
 
     # 将“时间”列转换为日期时间
     data['Time'] = pd.to_datetime(data['Time'])
@@ -160,6 +155,13 @@ os.makedirs(output_directory, exist_ok=True)
 # 列出输入目录中的所有 CSV 文件
 csv_files = glob(os.path.join(input_directory, '*.csv'))
 
+# 初始化一个空列表来保存数据帧
+dfs = []
+
+# 检查目录下是否有CSV文件
+if not csv_files:
+    print("No CSV files found in the directory.")
+
 # 处理每个文件
 for file_path in csv_files:
     try:
@@ -171,15 +173,28 @@ for file_path in csv_files:
         data_cleaned = data.dropna().copy()
 
         # 将 Z-Score 标准化应用于除“时间”和未来价格列之外的所有列
-        cols_to_normalize = data_cleaned.columns.difference(['Time', 'Future_High', 'Future_Low'])
+        cols_to_normalize = data_cleaned.columns.difference(['Time', 'Expected_High_Increase', 'Expected_Low_Increase'])
         data_cleaned.loc[:, cols_to_normalize] = data_cleaned.loc[:, cols_to_normalize].apply(zscore)
 
-        # 定义输出文件路径
-        output_file_path = os.path.join(output_directory, os.path.basename(file_path))
-
-        # 将清理后的数据保存到输出目录
-        data_cleaned.to_csv(output_file_path, index=False)
-        print(f"File processed and saved to: {output_file_path}")
+        # 将清理后的数据框附加到列表中
+        dfs.append(data_cleaned)
+        print(f"File processed: {file_path}")
 
     except Exception as e:
         print(f"An error occurred while processing {file_path}: {e}")
+
+# 连接列表中的所有数据帧
+if dfs:
+    combined_df = pd.concat(dfs, ignore_index=True)
+    # 定义组合文件的输出文件路径
+    combined_file_path = os.path.join(output_directory, 'combined_csv.csv')
+    # 将组合数据框保存到单个 CSV 文件
+    combined_df.to_csv(combined_file_path, index=False)
+    print(f"All files have been combined and saved to: {combined_file_path}")
+else:
+    print("No dataframes to combine.")
+
+import pygwalker as pyg
+
+df = pd.read_csv("/training/Data/binanceData/high_frequency/train/combined_csv.csv", parse_dates=["Time"])
+pyg.walk(df, hideDataSourceConfig=True, vegaTheme='g2')
