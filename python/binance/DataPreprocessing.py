@@ -1,5 +1,8 @@
 import os
 import pandas as pd
+from scipy.stats import zscore
+from glob import glob
+import pygwalker as pyg
 
 
 # 计算 SMA 和 EMA
@@ -61,8 +64,8 @@ def add_future_high_low(data, future_periods=10):
     data['Expected_Low_Increase'] = (future_lows - open_prices) / open_prices
 
     # 填充可能由移位操作引起的任何剩余 NaN 值（在 DataFrame 的末尾）
-    data['Expected_High_Increase'].fillna(method='ffill', inplace=True)
-    data['Expected_Low_Increase'].fillna(method='ffill', inplace=True)
+    # data['Expected_High_Increase'].fillna(method='ffill', inplace=True)
+    # data['Expected_Low_Increase'].fillna(method='ffill', inplace=True)
 
     return data
 
@@ -140,11 +143,6 @@ output_path = '/training/Data/binanceData/high_frequency/processed'
 process_all_csv_in_directory(input_path, output_path)
 print("complete")
 
-import pandas as pd
-import os
-from scipy.stats import zscore
-from glob import glob
-
 # 定义输入和输出目录
 input_directory = '/training/Data/binanceData/high_frequency/processed'
 output_directory = '/training/Data/binanceData/high_frequency/train'
@@ -194,7 +192,6 @@ if dfs:
 else:
     print("No dataframes to combine.")
 
-import pygwalker as pyg
-
-df = pd.read_csv("/training/Data/binanceData/high_frequency/train/combined_csv.csv", parse_dates=["Time"])
+# PyGWalker 分析 DataFrame：数据探索、创建图表和报告以及可视化交互
+df = pd.read_csv("/training/Data/binanceData/high_frequency/train/combined_csv.csv")
 pyg.walk(df, hideDataSourceConfig=True, vegaTheme='g2')
