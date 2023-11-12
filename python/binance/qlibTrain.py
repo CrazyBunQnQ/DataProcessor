@@ -1,4 +1,11 @@
 import pandas as pd
+from sklearn.model_selection import train_test_split
+import numpy as np
+import torch
+import torch.nn as nn
+import matplotlib.pyplot as plt
+import datetime
+import os
 
 # 加载数据
 file_path = '/training/Data/binanceData/high_frequency/train/combined_csv.csv'
@@ -6,8 +13,6 @@ data = pd.read_csv(file_path)
 
 # 显示数据框的前几行
 data.head()
-
-from datetime import datetime, timedelta
 
 # 将时间列转换为日期时间
 data['Time'] = pd.to_datetime(data['Time'])
@@ -49,24 +54,21 @@ sequences = split_sequences(data)
 # 显示我们有多少个序列以及第一个序列的第一行
 len(sequences), sequences[0].head()
 
-from sklearn.model_selection import train_test_split
-import numpy as np
-
 
 # 使用相应标签创建序列滑动窗口的函数
-def create_sliding_windows(sequences, input_window=15, output_window=10):
+def create_sliding_windows(sequences, input_window=15):
     X, y = [], []
     for sequence in sequences:
         # 删除训练时间列
         sequence = sequence.drop('Time', axis=1).values
         # 创建滑动窗口
-        for i in range(len(sequence) - input_window - output_window):
+        for i in range(len(sequence) - input_window):
             X.append(sequence[i:(i + input_window)])
             # 标签是未来10分钟预计的高点和低点涨幅
-            future_slice = sequence[(i + input_window):(i + input_window + output_window)]
+            # 由于标签已经预先计算，所以直接使用该行的Expected_High_Increase和Expected_Low_Increase
             y.append([
-                future_slice[:, -2].max(),  # Expected_High_Increase
-                future_slice[:, -1].min()  # Expected_Low_Increase
+                sequence[i + input_window - 1, -2],  # Expected_High_Increase
+                sequence[i + input_window - 1, -1]   # Expected_Low_Increase
             ])
     return np.array(X), np.array(y)
 
@@ -79,9 +81,6 @@ X, y = create_sliding_windows(sequences)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
 X_train.shape, y_train.shape, X_test.shape, y_test.shape
-
-import torch
-import torch.nn as nn
 
 # 将设备设置为 GPU（如果可用）
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -177,8 +176,6 @@ for i in range(epochs):
 
     print(f'Epoch {i} Training Loss: {train_losses[-1]:.6f} Test Loss: {test_losses[-1]:.6f}')
 
-import matplotlib.pyplot as plt
-
 # 绘制训练和测试损失图
 plt.figure(figsize=(12, 6))
 # 训练损失
@@ -220,8 +217,6 @@ with torch.no_grad():
 test_loss = loss_function(test_predictions, test_labels)
 print(f'Test Loss: {test_loss.item()}')
 
-import matplotlib.pyplot as plt
-
 # 将预测和标签转换为 numpy 以进行绘图
 test_predictions_np = test_predictions.numpy()
 test_labels_np = test_labels.numpy()
@@ -249,10 +244,7 @@ plt.legend()
 
 plt.show()
 
-
 # 保存模型
-import datetime
-import os
 
 # 以 YYYYMMDD 格式获取当前日期
 today = datetime.datetime.now().strftime("%Y%m%d")
@@ -268,4 +260,3 @@ torch.save(model.state_dict(), model_save_path)
 
 # 输出模型保存路径
 print(f"Model saved to {model_save_path}")
-
