@@ -29,7 +29,14 @@ public class GeoLite2Convert {
                 String id = values[0];
                 String contryName = values[5];
                 String provinceName = values[7];
+                if (line.contains("台湾") || line.contains("香港") || line.contains("澳门")) {
+                    provinceName = contryName;
+                    contryName = "中国";
+                }
                 String cityName = values[10];
+                if (line.contains("台湾") || line.contains("香港") || line.contains("澳门")) {
+                    System.out.println();
+                }
                 if (cityName == null || cityName.trim().isEmpty()) {
                     if (provinceName == null || provinceName.trim().isEmpty()) {
                         parentIdMap.put(contryName, id);
@@ -93,7 +100,12 @@ public class GeoLite2Convert {
                         fw.write("\n");
                         firstEntry = false;
                     }
-                    String entry = String.format("{\"latitude\": %s, \"name\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": \"%s\", \"longitude\": %s}", latitude, simpleName, geonameId, geonameId, parentId, longitude);
+                    String entry;
+                    if (parentId == null || "".equals(parentId.trim())) {
+                        entry = String.format("{\"latitude\": %s, \"name\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": null, \"longitude\": %s}", latitude, simpleName, geonameId, geonameId, longitude);
+                    } else {
+                        entry = String.format("{\"latitude\": %s, \"name\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": \"%s\", \"longitude\": %s}", latitude, simpleName, geonameId, geonameId, parentId, longitude);
+                    }
                     fw.write(entry);
                     idSet.add(geonameId);
                 }
