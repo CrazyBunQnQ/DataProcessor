@@ -138,6 +138,9 @@ public class GeoLite2Convert {
                         continue;
                     }
                     String simpleName = locationInfo[3];
+                    if (simpleName == null || simpleName.trim().isEmpty()) {
+                        continue;
+                    }
                     if (!firstEntry) {
                         fw.write(",\n");
                     } else {
@@ -169,7 +172,13 @@ public class GeoLite2Convert {
             while ((line = br.readLine()) != null) {
                 String[] values = line.split(",");
                 String network = values[0];
-                String geonameId = values[1];
+                String geonameId = values[1]; // 地理位置 id
+                if ("".equals(geonameId)) {
+                    geonameId = values[2]; // 注册国家 id
+                }
+                if ("".equals(geonameId)) {
+                    geonameId = values[3]; // 代表国家 id
+                }
                 if (removedIdMap.containsKey(geonameId)) {
                     geonameId = savedLocationMap.get(removedIdMap.get(geonameId));
                 }
@@ -185,6 +194,8 @@ public class GeoLite2Convert {
                     String result = "{\"city\":\"" + cityInfo + "\",\"start_ip\":" + ips[0] + ",\"id\":\"" + id + "\",\"end_ip\":" + ips[1] + "}";
                     fw.write(result + "\n");
                     id++;
+                } else {
+                    System.out.println("未识别地理位置信息: " + line);
                 }
             }
         } catch (IOException e) {
