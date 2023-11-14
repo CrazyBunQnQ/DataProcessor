@@ -13,9 +13,18 @@ import java.util.Set;
 
 public class GeoLite2Convert {
 
+    /**
+     * id 对应的地理位置
+     */
     private static Map<String, String[]> locationMap = new HashMap<>();
+    /**
+     * 国家或省的 id
+     */
     private static Map<String, String> parentIdMap = new HashMap<>();
     private static Set<String> idSet = new HashSet<>();
+    private static Set<String> savedLocations = new HashSet<>();
+    private static Map<String, String> savedLocationMap = new HashMap<>();
+    private static Map<String, String> removedIdMap = new HashMap<>();
 
     public static void main(String[] args) {
     }
@@ -34,9 +43,6 @@ public class GeoLite2Convert {
                     contryName = "中国";
                 }
                 String cityName = values[10];
-                if (line.contains("台湾") || line.contains("香港") || line.contains("澳门")) {
-                    System.out.println();
-                }
                 if (cityName == null || cityName.trim().isEmpty()) {
                     if (provinceName == null || provinceName.trim().isEmpty()) {
                         parentIdMap.put(contryName, id);
@@ -53,6 +59,39 @@ public class GeoLite2Convert {
             e.printStackTrace();
         }
 
+    }
+
+    public static void removeDuplicates(String ipv4Path) {
+        Set<String> tmpId = new HashSet<>();
+        try (BufferedReader br = new BufferedReader(new FileReader(ipv4Path))) {
+            String line;
+            br.readLine(); // Skip header
+            while ((line = br.readLine()) != null) {
+                String[] values = line.split(",");
+                String geonameId = values[1];
+                if (tmpId.contains(geonameId)) {
+                    continue;
+                }
+
+                if (locationMap.containsKey(geonameId)) {
+                    String[] locationInfo = locationMap.get(geonameId);
+                    String cityName = locationInfo[2];
+                    String provinceName = locationInfo[1];
+                    String parentName = locationInfo[0];
+                    String savedName = parentName + " " + provinceName + " " + cityName;
+                    savedName = savedName.trim();
+                    if (savedLocationMap.containsKey(savedName)) {
+                        // 忽略的 id 要在其他绑定关系中修改关联 id
+                        removedIdMap.put(geonameId, savedName);
+                        continue;
+                    }
+                    savedLocationMap.put(savedName, geonameId);
+                    tmpId.add(geonameId);
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public static void convertToCityInfo(String ipv4Path, String locationsOutputPath) {
@@ -80,18 +119,23 @@ public class GeoLite2Convert {
                     if (idSet.contains(geonameId)) {
                         continue;
                     }
+                    String savedName = parentName + " " + provinceName + " " + cityName;
+                    savedName = savedName.trim();
                     String parentId = "";
-                    if (!cityName.isEmpty()) {
-                        if (!provinceName.isEmpty()) {
-                            parentName = parentName + " " + provinceName;
-                        }
-                        if (parentIdMap.containsKey(parentName)) {
-                            parentId = parentIdMap.get(parentName);
-                        }
-                    } else if (!provinceName.isEmpty()) {
-                        if (parentIdMap.containsKey(parentName)) {
-                            parentId = parentIdMap.get(parentName);
-                        }
+                    if (!cityName.isEmpty() && !provinceName.isEmpty()) {
+                        parentName = parentName + " " + provinceName;
+                    }
+                    if (parentIdMap.containsKey(parentName)) {
+                        parentId = parentIdMap.get(parentName);
+                    }
+                    if (removedIdMap.containsKey(parentId)) {
+                        parentId = savedLocationMap.get(parentName);
+                    }
+                    if (removedIdMap.containsKey(geonameId)) {
+                        geonameId = savedLocationMap.get(savedName);
+                    }
+                    if (savedLocations.contains(savedName)) {
+                        continue;
                     }
                     String simpleName = locationInfo[3];
                     if (!firstEntry) {
@@ -101,13 +145,14 @@ public class GeoLite2Convert {
                         firstEntry = false;
                     }
                     String entry;
-                    if (parentId == null || "".equals(parentId.trim())) {
+                    if (parentId == null || "".equals(parentId.trim()) || geonameId.equals(parentId)) {
                         entry = String.format("{\"latitude\": %s, \"name\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": null, \"longitude\": %s}", latitude, simpleName, geonameId, geonameId, longitude);
                     } else {
                         entry = String.format("{\"latitude\": %s, \"name\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": \"%s\", \"longitude\": %s}", latitude, simpleName, geonameId, geonameId, parentId, longitude);
                     }
                     fw.write(entry);
                     idSet.add(geonameId);
+                    savedLocations.add(savedName);
                 }
             }
             fw.write("\n]");
@@ -125,6 +170,9 @@ public class GeoLite2Convert {
                 String[] values = line.split(",");
                 String network = values[0];
                 String geonameId = values[1];
+                if (removedIdMap.containsKey(geonameId)) {
+                    geonameId = savedLocationMap.get(removedIdMap.get(geonameId));
+                }
                 String[] ips = convertNetworkToIps(network);
                 if (ips == null) {
                     continue;
