@@ -191,6 +191,10 @@ public class GeoLite2Convert {
                 if (location != null) {
                     String cityInfo = location[0] + " " + location[1] + " " + location[2];
                     cityInfo = cityInfo.trim();
+                    // 可能只有大洲，没有国家
+                    if (cityInfo == null || cityInfo.isEmpty()) {
+                        continue;
+                    }
                     String result = "{\"city\":\"" + cityInfo + "\",\"start_ip\":" + ips[0] + ",\"id\":\"" + id + "\",\"end_ip\":" + ips[1] + "}";
                     fw.write(result + "\n");
                     id++;
