@@ -40,8 +40,8 @@ def parse_event_content(content):
 
 # 处理每个文件并提取事件的辅助函数
 def process_file(file_path):
-    # 从文件名中提取 Windows 版本
-    windows_version = re.search(r'Win\d+', file_path).group(0)
+    # 从文件名中提取 Windows 版本, 截取 '_' 到 '.' 之间的部分
+    windows_version = re.search(r'_(.*?)\.', file_path).group(1)
     with open(file_path, 'r', encoding='utf-8') as file:
         content = file.read()
 
@@ -50,8 +50,14 @@ def process_file(file_path):
 
         # 处理每个事件匹配
         for event_content in events[1:]:  # 跳过第一个分割，因为它在第一个“事件：”之前
-            event_dict = parse_event_content(event_content)
-            event_dict['message'] = event_dict['message'].strip()
+            try:
+                event_dict = parse_event_content(event_content)
+                event_dict['message'] = event_dict['message'].strip()
+            except Exception:
+                continue
+            # 如果 message 是空的则跳过
+            if not event_dict['message']:
+                continue
             event_dict['windows_version'] = windows_version
 
             # 生成事件字典
@@ -78,7 +84,9 @@ for filename in os.listdir(directory_path):
 
             # 更新Windows版本列表
             if 'windows_version' in existing_event:
-                existing_event['windows_version'] += f";{event['windows_version']}"
+                # 如果不包含则追加
+                if event['windows_version'] not in existing_event['windows_version']:
+                    existing_event['windows_version'] += f";{event['windows_version']}"
             else:
                 existing_event['windows_version'] = event['windows_version']
 
