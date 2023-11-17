@@ -40,8 +40,8 @@ def parse_event_content(content):
 
 # 处理每个文件并提取事件的辅助函数
 def process_file(file_path):
-    # 从文件名中提取 Windows 版本, 截取 '_' 到 '.' 之间的部分
-    windows_version = re.search(r'_(.*?)\.', file_path).group(1)
+    # 从文件名中提取 Windows 版本, 截取最后一个 '_' 到 '.' 之间的部分
+    windows_version = file_path.split('_')[-1].split('.')[0]
     with open(file_path, 'r', encoding='utf-8') as file:
         content = file.read()
 
