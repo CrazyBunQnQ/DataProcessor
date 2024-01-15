@@ -8,10 +8,12 @@ directory_path = './input/'
 
 
 # 解析单个事件内容的函数
-def parse_event_content(content):
+def parse_event_content(from_name, content):
     # 为解析后的数据创建字典
     parsed_data = {
+        'key': None,
         'value': None,
+        'from': from_name,
         'version': None,
         'opcode': None,
         'channel': None,
@@ -29,6 +31,8 @@ def parse_event_content(content):
     parsed_data['level'] = re.search(r'level: (.*)', content).group(1)
     parsed_data['task'] = re.search(r'task: (.*)', content).group(1)
     parsed_data['keywords'] = re.search(r'keywords: (.*)', content).group(1)
+    # 计算 keywords 的 md5
+    parsed_data['key'] = hashlib.md5((parsed_data['value'] + parsed_data['from'] + parsed_data['version'] + parsed_data['opcode'] + parsed_data['channel'] + parsed_data['level'] + parsed_data['task'] + parsed_data['keywords']).encode('utf-8')).hexdigest()
 
     # 提取介于“message:”和下一次出现的“event:”或字符串末尾之间的消息
     message_match = re.search(r'message:(.*?)(?=event:|$)', content, re.DOTALL)
@@ -40,6 +44,9 @@ def parse_event_content(content):
 
 # 处理每个文件并提取事件的辅助函数
 def process_file(file_path):
+    # 从文件名中截取最后一个 '_' 之前的部分
+    from_name = file_path.rsplit('_', 1)[0]
+    from_name = from_name.split('/')[-1]
     # 从文件名中提取 Windows 版本, 截取最后一个 '_' 到 '.' 之间的部分
     windows_version = file_path.split('_')[-1].split('.')[0]
     with open(file_path, 'r', encoding='utf-8') as file:
@@ -51,7 +58,7 @@ def process_file(file_path):
         # 处理每个事件匹配
         for event_content in events[1:]:  # 跳过第一个分割，因为它在第一个“事件：”之前
             try:
-                event_dict = parse_event_content(event_content)
+                event_dict = parse_event_content(from_name, event_content)
                 event_dict['message'] = event_dict['message'].strip()
             except Exception:
                 continue
@@ -65,15 +72,22 @@ def process_file(file_path):
 
 
 # 创建一个字典来存储事件，并以事件 ID 为键
-events_by_id = defaultdict(dict)
+events_by_key = defaultdict(dict)
 
 # 遍历目录中的每个文件并处理事件
 for filename in os.listdir(directory_path):
     file_path = os.path.join(directory_path, filename)
     if os.path.isfile(file_path):
         for event in process_file(file_path):
-            event_id = event['value']
-            existing_event = events_by_id[event_id]
+            event_key = hashlib.md5((event['value'] + event['from'] + event['version'] + event['opcode'] + event['channel'] + event['level'] + event['task'] + event['keywords']).encode('utf-8')).hexdigest()
+            existing_event = events_by_key[event_key]
+            # 判断 events_by_id 中是否包含 event_id
+            if existing_event and event['message'] != existing_event['message'] and event['windows_version'] != 'Windows2016' and existing_event['windows_version'] != 'Windows2016':
+                if event['message'] != existing_event['message'] and re.search('[\u4e00-\u9fff]', event['message']) and re.search('[\u4e00-\u9fff]', existing_event['message']):
+                    print(f"event_id: {event_key}")
+                    print(f"pre event: {existing_event['message']}")
+                    print(f"cur event: {event['message']}")
+                    print("------------------")
 
             # 检查事件消息是否包含汉字并优先处理
             if 'message' in existing_event:
@@ -91,21 +105,22 @@ for filename in os.listdir(directory_path):
                 existing_event['windows_version'] = event['windows_version']
 
             # 如果尚未设置剩余字段，请更新它们
-            for field in ['version', 'opcode', 'channel', 'level', 'task', 'keywords']:
+            for field in ['value', 'from', 'version', 'opcode', 'channel', 'level', 'task', 'keywords']:
                 if field not in existing_event:
                     existing_event[field] = event[field]
 
             # 将更新的事件存储回字典中
-            events_by_id[event_id] = existing_event
+            events_by_key[event_key] = existing_event
 
 # 写入 CSV 文件
 csv_file_path = './parsed_events.csv'
-fieldnames = ['value', 'version', 'opcode', 'channel', 'level', 'task', 'keywords', 'message', 'windows_version']
+fieldnames = ['key', 'value', 'from', 'version', 'opcode', 'channel', 'level', 'task', 'keywords', 'message', 'windows_version']
 with open(csv_file_path, 'w', newline='', encoding='utf-8') as csvfile:
     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
     writer.writeheader()
-    for event_id, event_data in events_by_id.items():
-        event_data['value'] = event_id
+    for event_key, event_data in events_by_key.items():
+        event_data['key'] = event_key
+        # event_data['value'] = event_key
         writer.writerow(event_data)
 
 print(f'Events have been parsed and merged into {csv_file_path}')
