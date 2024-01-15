@@ -271,3 +271,7 @@ google-services.json
 *.bin
 CVE.json
 java/src/test/resources/data/
+/python/winevent/input/
+/python/winevent/parsed_events.csv
+.env
+/python/sa/*.json
