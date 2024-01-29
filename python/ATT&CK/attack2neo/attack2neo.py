@@ -2,41 +2,84 @@
 
 import argparse
 import json
-import re
 import sys
-from py2neo import Graph, Node, Relationship, NodeMatcher, cypher
+from datetime import datetime
+
+from py2neo import Graph, Node, Relationship, NodeMatcher
 
 
 # -----------------------------------------------------------------
 # BUILD_LABEL
 # -----------------------------------------------------------------
 def build_label(txt):
-    if txt.startswith('intrusion-set'):        return 'Group'
-    if txt.startswith('malware'):            return 'Software'
-    if txt.startswith('tool'):                return 'Tool'
-    if txt.startswith('attack-pattern'):    return 'Technique'
-    if txt.startswith('course-of-action'):    return 'Technique'
+    if txt.startswith('intrusion-set'):
+        return 'Group'
+    if txt.startswith('malware'):
+        return 'Software'
+    if txt.startswith('tool'):
+        return 'Tool'
+    if txt.startswith('attack-pattern'):
+        return 'Technique'
+    if txt.startswith('course-of-action'):
+        return 'Mitigations'
+    if txt.startswith('campaign'):
+        return 'Campaign'
+    if txt.startswith('x-mitre-tactic'):
+        return 'Tactic'
     return 'Unknown'
 
 
 # -----------------------------------------------------------------
 # BUILD ALIASES
 # -----------------------------------------------------------------
-def build_objects(obj, key):
+def build_objects(obj):
     label = build_label(obj['type'])
 
     # add properties
-    props = {}
-    props['name'] = obj['name']
-    props['id'] = obj['id']
-    props['type'] = obj['type']
-    if obj.get('description'):        props['description'] = obj[
-        'description']  # cypher.cypher_escape( obj['description'] )
-    if obj.get('created'):            props['created'] = obj['created']
-    if obj.get('modified'):            props['modified'] = obj['modified']
-    if obj.get('x_mitre_version'):    props['version'] = obj['x_mitre_version']
+    props = {'name': obj['name'], 'id': obj['id'], 'type': obj['type'], 'nodeType': obj['type']}
+    if obj.get('description'):
+        props['description'] = obj['description']
+        # cypher.cypher_escape( obj['description'] )
+    if obj.get('created'):
+        props['created'] = obj['created']
+    if obj.get('modified'):
+        props['modified'] = obj['modified']
+        props['updateTimestamp'] = int(datetime.fromisoformat(obj['modified'].rstrip("Z")).timestamp() * 1000)
+    if obj.get('x_mitre_version'):
+        props['version'] = obj['x_mitre_version']
+    if obj.get('kill_chain_phases') and len(obj['kill_chain_phases']) > 0:
+        tactics_phase = obj['kill_chain_phases']
+        props['killChainName'] = tactics_phase[0]['kill_chain_name']
+        # 收集所有的 phase_name 到列表中
+        props['tacticsPhaseName'] = [phase['phase_name'] for phase in tactics_phase]
+    if obj.get('aliases'):
+        props['aliases'] = obj['aliases']
+    if obj.get('x_mitre_platforms'):
+        props['platforms'] = obj['x_mitre_platforms']
+    if obj.get('labels'):
+        props['labels'] = obj['labels']
+    if obj.get('x_mitre_deprecated'):
+        props['deprecated'] = obj['x_mitre_deprecated']
+    if obj.get('x_mitre_detection'):
+        props['detection'] = obj['x_mitre_detection']
+    if obj.get('x_mitre_domains'):
+        props['domains'] = obj['x_mitre_domains']
+    if obj.get('x_mitre_is_subtechnique'):
+        props['isSubtechnique'] = obj['x_mitre_is_subtechnique']
+    if obj.get('x_mitre_data_sources'):
+        props['dataSources'] = obj['x_mitre_data_sources']
+    if obj.get('revoked'):
+        props['revoked'] = obj['revoked']
+    if obj.get('external_references'):
+        external_references = obj['external_references']
+        for reference in external_references:
+            if 'external_id' in reference:
+                props['mitreUrl'] = reference['url']
+                props['mitreId'] = reference['external_id']
+                break  # 找到后就可以退出循环
+
     # create node for the group
-    node_main = Node(label, **props)
+    node_main = Node('BaseNode', 'Attck', label, **props)
     # merge node to graph
     graph.merge(node_main, label, 'name')
     print('%s: "%s"' % (label, obj['name']), end='') if dbg_mode else None
@@ -51,10 +94,10 @@ def build_objects(obj, key):
     if aliases:
         for alias in aliases:
             if alias != obj['name']:
-                node_alias = Node('Alias', name=alias, type=obj['type'])
+                node_alias = Node('BaseNode', 'AttckAlias', name=alias, type=obj['type'])
                 relation = Relationship.type('alias')
                 graph.merge(relation(node_main, node_alias), label, 'name')
-                print(' -[alias]-> "%s"' % (alias), end='') if dbg_mode else None
+                print(' -[alias]-> "%s"' % alias, end='') if dbg_mode else None
     print() if dbg_mode else None
 
 
@@ -62,8 +105,10 @@ def build_objects(obj, key):
 # BUILD RELATIONS
 # -----------------------------------------------------------------
 def build_relations(obj):
-    if not gnames.get(obj['source_ref']): return
-    if not gnames.get(obj['target_ref']): return
+    if not gnames.get(obj['source_ref']):
+        return
+    if not gnames.get(obj['target_ref']):
+        return
 
     m = NodeMatcher(graph)
 
@@ -72,11 +117,13 @@ def build_relations(obj):
 
     # source = Node( build_label(obj['source_ref']), name=gnames[obj['source_ref']], id=obj['source_ref'] )
     # target = Node( build_label(obj['target_ref']), name=gnames[obj['target_ref']], id=obj['target_ref'] )
-    relation = Relationship.type(obj['relationship_type'])
-
-    graph.merge(relation(source, target), build_label(obj['source_ref']), 'name')
+    # relation = Relationship.type(obj['relationship_type'])
+    # graph.merge(relation(source, target), build_label(obj['source_ref']), 'name')
+    relation = Relationship(source, 'AttckRelation', target, caption=obj['relationship_type'],
+                            description=obj['description'] if obj.get('description') else None)
+    graph.merge(relation, build_label(obj['source_ref']), 'name')
     print('Relation: "%s" -[%s]-> "%s"' % (
-    gnames[obj['source_ref']], obj['relationship_type'], gnames[obj['target_ref']])) if dbg_mode else None
+        gnames[obj['source_ref']], obj['relationship_type'], gnames[obj['target_ref']])) if dbg_mode else None
 
 
 # -----------------------------------------------------------------
@@ -138,22 +185,44 @@ for obj in data['objects']:
     # if JSON object is about Groups
     if args.groups and obj['type'] == 'intrusion-set':
         gnames[obj['id']] = obj['name']
-        build_objects(obj, 'aliases')
+        build_objects(obj)
+        continue
 
     # if JSON object is about Softwares
     if args.softwares and obj['type'] == 'malware':
         gnames[obj['id']] = obj['name']
-        build_objects(obj, 'x_mitre_aliases')
+        build_objects(obj)
+        continue
 
     # if JSON object is about Tools
     if args.tools and obj['type'] == 'tool':
         gnames[obj['id']] = obj['name']
-        build_objects(obj, 'x_mitre_aliases')
+        build_objects(obj)
+        continue
 
     # if JSON object is about Techniques
-    if args.techniques and (obj['type'] == 'attack-pattern' or obj['type'] == 'course-of-action'):
+    if args.techniques and obj['type'] == 'attack-pattern':
         gnames[obj['id']] = obj['name']
-        build_objects(obj, None)
+        build_objects(obj)
+        continue
+    if args.techniques and obj['type'] == 'course-of-action':
+        gnames[obj['id']] = obj['name']
+        build_objects(obj)
+        continue
+    # 活动相关
+    if args.unknown and obj['type'] == 'campaign':
+        build_objects(obj)
+        continue
+    # 策略相关
+    if obj['type'] == 'x-mitre-tactic':
+        build_objects(obj)
+        continue
+    if (obj['type'] == 'identity' or obj['type'] == 'marking-definition' or obj['type'] == 'x-mitre-collection'
+            or obj['type'] == 'x-mitre-data-component' or obj['type'] == 'x-mitre-asset'
+            or obj['type'] == 'x-mitre-data-source' or obj['type'] == 'x-mitre-matrix'
+            or obj['type'] == 'relationship'):
+        continue
+    print("other debug")
     # label = build_label(obj['type'])
     # node_main = Node(label, name=obj['name'], id=obj['id'])
     # graph.merge(node_main,label,'name')
