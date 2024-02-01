@@ -3,9 +3,14 @@
 import argparse
 import json
 import sys
+import time
 from datetime import datetime
 
+import requests
 from py2neo import Graph, Node, Relationship, NodeMatcher
+
+LibreTranslateAPI = "your libretranslate api url"
+translate_cache = {}
 
 
 # -----------------------------------------------------------------
@@ -30,13 +35,61 @@ def build_label(txt):
 
 
 # -----------------------------------------------------------------
+# Translate Text
+# -----------------------------------------------------------------
+def translate_text(text, source_lang='en', target_lang='zh'):
+    # 检查缓存
+    if text in translate_cache:
+        return translate_cache[text]
+
+    headers = {
+        "Content-Type": "application/json;charset=UTF-8"
+    }
+    payload = {
+        "q": text,
+        "source": source_lang,
+        "target": target_lang
+    }
+
+    while True:
+        try:
+            response = requests.post(LibreTranslateAPI, headers=headers, json=payload)
+            if response.status_code == 200:
+                translated_text = response.json().get('translatedText', '')
+                translate_cache[text] = translated_text  # 存储翻译结果到缓存
+                return translated_text
+            else:
+                return f"Error: {response.status_code}"
+        except Exception:
+            print(f"请求失败，将在 10 秒后重试...")
+            time.sleep(10)
+
+
+def translate_obj(o):
+    if args.localization == 'en':
+        return
+    if o.get('name'):
+        name = translate_text(o['name'], 'en', args.localization)
+        if len(name) != 0:
+            o['name'] = o['name'] + '(' + name + ')'
+    if o.get('description'):
+        description = translate_text(o['description'], 'en', args.localization)
+        if len(description) != 0:
+            o['description'] = description
+    if obj.get('x_mitre_detection'):
+        detection = translate_text(o['x_mitre_detection'], 'en', args.localization)
+        if len(detection) != 0:
+            o['x_mitre_detection'] = detection
+
+
+# -----------------------------------------------------------------
 # BUILD ALIASES
 # -----------------------------------------------------------------
 def build_objects(obj):
     label = build_label(obj['type'])
 
     # add properties
-    props = {'name': obj['name'], 'id': obj['id'], 'type': obj['type'], 'nodeType': obj['type']}
+    props = {'name': obj['name'], 'id': obj['id'], 'type': obj['type']}
     if obj.get('description'):
         props['description'] = obj['description']
         # cypher.cypher_escape( obj['description'] )
@@ -54,6 +107,8 @@ def build_objects(obj):
         props['tacticsPhaseName'] = [phase['phase_name'] for phase in tactics_phase]
     if obj.get('aliases'):
         props['aliases'] = obj['aliases']
+    elif obj.get('x_mitre_aliases'):
+        props['aliases'] = obj['x_mitre_aliases']
     if obj.get('x_mitre_platforms'):
         props['platforms'] = obj['x_mitre_platforms']
     if obj.get('labels'):
@@ -93,6 +148,10 @@ def build_objects(obj):
         aliases = None
     if aliases:
         for alias in aliases:
+            name = translate_text(alias, 'en', args.localization)
+            if len(name) != 0:
+                alias = alias + '(' + name + ')'
+            # 建立别名关系
             if alias != obj['name']:
                 node_alias = Node('BaseNode', 'AttckAlias', name=alias, type=obj['type'])
                 relation = Relationship.type('alias')
@@ -145,6 +204,9 @@ parser.add_argument('-t', '--techniques',
                     action='store_true')
 parser.add_argument('-r', '--relations', help='import Relations objects (type:relationship)', default=False,
                     action='store_true')
+parser.add_argument('-u', '--unknown', help='import other objects', default=True, action='store_true')
+parser.add_argument('-l', '--localization', help='translated into local languages', default='zh',
+                    action='store', required=False)
 args = parser.parse_args()
 
 #
@@ -184,37 +246,44 @@ for obj in data['objects']:
 
     # if JSON object is about Groups
     if args.groups and obj['type'] == 'intrusion-set':
+        translate_obj(obj)
         gnames[obj['id']] = obj['name']
         build_objects(obj)
         continue
 
     # if JSON object is about Softwares
     if args.softwares and obj['type'] == 'malware':
+        translate_obj(obj)
         gnames[obj['id']] = obj['name']
         build_objects(obj)
         continue
 
     # if JSON object is about Tools
     if args.tools and obj['type'] == 'tool':
+        translate_obj(obj)
         gnames[obj['id']] = obj['name']
         build_objects(obj)
         continue
 
     # if JSON object is about Techniques
     if args.techniques and obj['type'] == 'attack-pattern':
+        translate_obj(obj)
         gnames[obj['id']] = obj['name']
         build_objects(obj)
         continue
     if args.techniques and obj['type'] == 'course-of-action':
+        translate_obj(obj)
         gnames[obj['id']] = obj['name']
         build_objects(obj)
         continue
     # 活动相关
     if args.unknown and obj['type'] == 'campaign':
+        translate_obj(obj)
         build_objects(obj)
         continue
     # 策略相关
     if obj['type'] == 'x-mitre-tactic':
+        translate_obj(obj)
         build_objects(obj)
         continue
     if (obj['type'] == 'identity' or obj['type'] == 'marking-definition' or obj['type'] == 'x-mitre-collection'
