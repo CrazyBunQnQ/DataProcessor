@@ -11,6 +11,13 @@ from py2neo import Graph, Node, Relationship, NodeMatcher
 
 LibreTranslateAPI = "your libretranslate api url"
 translate_cache = {}
+# 如果本地文件存在则尝试读取上次保存的翻译缓存
+try:
+    with open('translate_cache.json', 'r', encoding='utf-8') as f:
+        translate_cache = json.load(f)
+except Exception as e:
+    print('读取翻译缓存失败，将重新开始翻译...')
+translate_count = 0
 
 
 # -----------------------------------------------------------------
@@ -38,6 +45,7 @@ def build_label(txt):
 # Translate Text
 # -----------------------------------------------------------------
 def translate_text(text, source_lang='en', target_lang='zh'):
+    global translate_count
     # 检查缓存
     if text in translate_cache:
         return translate_cache[text]
@@ -57,6 +65,7 @@ def translate_text(text, source_lang='en', target_lang='zh'):
             if response.status_code == 200:
                 translated_text = response.json().get('translatedText', '')
                 translate_cache[text] = translated_text  # 存储翻译结果到缓存
+                translate_count += 1
                 return translated_text
             else:
                 return f"Error: {response.status_code}"
@@ -123,6 +132,8 @@ def build_objects(obj):
         props['isSubtechnique'] = obj['x_mitre_is_subtechnique']
     if obj.get('x_mitre_data_sources'):
         props['dataSources'] = obj['x_mitre_data_sources']
+    if obj.get('x_mitre_shortname'):
+        props['shortName'] = obj['x_mitre_shortname']
     if obj.get('revoked'):
         props['revoked'] = obj['revoked']
     if obj.get('external_references'):
@@ -134,7 +145,7 @@ def build_objects(obj):
                 break  # 找到后就可以退出循环
 
     # create node for the group
-    node_main = Node('BaseNode', 'Attck', label, **props)
+    node_main = Node('BaseNode', 'KnowledgeNode', 'Neo4jAttckBaseNode', label, **props)
     # merge node to graph
     graph.merge(node_main, label, 'name')
     print('%s: "%s"' % (label, obj['name']), end='') if dbg_mode else None
@@ -153,7 +164,7 @@ def build_objects(obj):
                 alias = alias + '(' + name + ')'
             # 建立别名关系
             if alias != obj['name']:
-                node_alias = Node('BaseNode', 'AttckAlias', name=alias, type=obj['type'])
+                node_alias = Node('BaseNode', 'KnowledgeNode', 'AttckAlias', name=alias, type=obj['type'])
                 relation = Relationship.type('alias')
                 graph.merge(relation(node_main, node_alias), label, 'name')
                 print(' -[alias]-> "%s"' % alias, end='') if dbg_mode else None
@@ -305,5 +316,8 @@ for obj in data['objects']:
     if args.relations and obj['type'] == 'relationship':
         build_relations(obj)
 
-#
+print("翻译次数: " + str(translate_count))
+# 保存翻译缓存为本地 json 文件
+with open('translate_cache.json', 'w', encoding='utf-8') as f:
+    json.dump(translate_cache, f, ensure_ascii=False, indent=4)
 # End
