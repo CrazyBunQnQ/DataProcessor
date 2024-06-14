@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 import sys
 import time
 from datetime import datetime
@@ -10,9 +11,14 @@ import requests
 from py2neo import Graph, Node, Relationship, NodeMatcher
 
 LibreTranslateAPI = "your libretranslate api url"
+OpenAIUrl = "https://api.openai.com/v1/chat/completions"
+OpenAIKey = "sk-xxxx"
 translate_cache = {}
-# 如果本地文件存在则尝试读取上次保存的翻译缓存
+
+# 提取翻译结果的正则表达式模式
+pattern = r'["\']translatedText["\']: ["\']([^}]+)'
 try:
+    # 如果本地文件存在则尝试读取上次保存的翻译缓存
     with open('translate_cache.json', 'r', encoding='utf-8') as f:
         translate_cache = json.load(f)
 except Exception as e:
@@ -44,12 +50,96 @@ def build_label(txt):
 # -----------------------------------------------------------------
 # Translate Text
 # -----------------------------------------------------------------
-def translate_text(text, source_lang='en', target_lang='zh'):
-    global translate_count
+def translate_text(text, source_lang='en', target_lang='zh', engine='OpenAI'):
+    if len(text) < 2:
+        return text
     # 检查缓存
     if text in translate_cache:
         return translate_cache[text]
 
+    if engine == 'OpenAI':
+        return translate_text_by_openai(text)
+    else:
+        return translate_text_by_libre_translate(text, source_lang, target_lang)
+
+
+
+def translate_text_by_openai(text):
+    global translate_count
+    headers = {
+        "Content-Type": "application/json;charset=UTF-8",
+        "Authorization": OpenAIKey
+    }
+    payload = {
+        "model": "gpt-3.5-turbo",
+        "messages": [
+            {
+                "role": "system",
+                "content": "你是一个专业的工控安全领域翻译 API 接口，将我发给你的 ATT&CK 框架相关的英文文本翻译成中文。注意保持原有格式，且专有名词及链接不做翻译, 并按照以下 json 格式返回给我：\n\n{\"translatedText\": \"翻译结果\"}\n还要注意不要返回无效的转义字符。"
+            },
+            {
+                "role": "user",
+                "content": text
+            }
+        ]
+    }
+
+    while True:
+        try:
+            # 检查缓存
+            if text in translate_cache:
+                return translate_cache[text]
+            response = requests.post(OpenAIUrl, headers=headers, json=payload)
+            if response.status_code == 200:
+                response_content = response.text
+                # 转为 json 格式
+                response_content = json.loads(response_content)
+                # 获取 .get('choices', []).get('0', {}).get('message', {}).get('content', ''))
+                response_content = response_content.get('choices', [])
+                response_content = response_content[0]
+                response_content = response_content.get('message', {})
+                response_content = response_content.get('content', '')
+                # 如果返回的内容中包含 '`' 则替换为 ''
+                if response_content.find('```json') != -1:
+                    response_content = response_content.replace('```json', '')
+                if response_content.find('```') != -1:
+                    response_content = response_content.replace('```', '')
+                if response_content.find('`') != -1:
+                    response_content = response_content.replace('`', '')
+                translated_text = ''
+                try:
+                    translated_text = json.loads(response_content, strict=False)
+                    translated_text = translated_text.get('translatedText', '')
+                except Exception:
+                    # 根据正则表达式 ['"]translatedText['"]: ['"] 从 response_content 截取 translatedText 的内容
+                    match = re.search(pattern, response_content)
+                    if match:
+                        translated_text = match.group(1)
+                        # 删除最后的所有空字符
+                        translated_text = translated_text.rstrip()[:-1]
+                        print("正则截取...")
+                if translated_text == '':
+                    print(f"翻译失败: {text} - {response_content}，将在 10 秒后重试...")
+                    time.sleep(30)
+                else:
+                    translate_cache[text] = translated_text  # 存储翻译结果到缓存
+                    with open('translate_cache.json', 'w', encoding='utf-8') as ff:
+                        json.dump(translate_cache, ff, ensure_ascii=False, indent=4)
+                    translate_count += 1
+                    time.sleep(15)
+                    return translated_text
+            elif response.status_code == 429:
+                print("已达到每24小时发送信息的限制。")
+                exit(1)
+            else:
+                return f"Error: {response.status_code}"  # time.sleep(30)
+        except Exception as e:
+            print(f"请求失败: {text}，将在 10 秒后重试...")
+            time.sleep(10)
+
+
+def translate_text_by_libre_translate(text, source_lang='en', target_lang='zh'):
+    global translate_count
     headers = {
         "Content-Type": "application/json;charset=UTF-8"
     }
@@ -160,7 +250,7 @@ def build_objects(obj):
     if aliases:
         for alias in aliases:
             name = translate_text(alias, 'en', args.localization)
-            if len(name) != 0:
+            if len(name) != 0 and name != alias:
                 alias = alias + '(' + name + ')'
             # 建立别名关系
             if alias != obj['name']:
@@ -217,6 +307,8 @@ parser.add_argument('-r', '--relations', help='import Relations objects (type:re
                     action='store_true')
 parser.add_argument('-u', '--unknown', help='import other objects', default=True, action='store_true')
 parser.add_argument('-l', '--localization', help='translated into local languages', default='zh',
+                    action='store', required=False)
+parser.add_argument('-e', '--engine', help='translation engine (OpenAI, LibreTranslate)', default='OpenAI',
                     action='store', required=False)
 args = parser.parse_args()
 
@@ -318,6 +410,7 @@ for obj in data['objects']:
 
 print("翻译次数: " + str(translate_count))
 # 保存翻译缓存为本地 json 文件
-with open('translate_cache.json', 'w', encoding='utf-8') as f:
-    json.dump(translate_cache, f, ensure_ascii=False, indent=4)
+if args.engine != 'OpenAI':
+    with open('translate_cache.json', 'w', encoding='utf-8') as f:
+        json.dump(translate_cache, f, ensure_ascii=False, indent=4)
 # End
