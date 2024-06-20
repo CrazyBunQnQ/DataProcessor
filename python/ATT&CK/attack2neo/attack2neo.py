@@ -17,12 +17,25 @@ translate_cache = {}
 
 # 提取翻译结果的正则表达式模式
 pattern = r'["\']translatedText["\']: ["\']([^}]+)'
-try:
-    # 如果本地文件存在则尝试读取上次保存的翻译缓存
-    with open('translate_cache.json', 'r', encoding='utf-8') as f:
-        translate_cache = json.load(f)
-except Exception as e:
-    print('读取翻译缓存失败，将重新开始翻译...')
+
+
+def load_cache():
+    global translate_cache
+    try:
+        # 如果本地文件存在则尝试读取上次保存的翻译缓存
+        with open('translate_cache.json', 'r', encoding='utf-8') as f:
+            translate_cache = json.load(f)
+    except Exception as e:
+        print('读取翻译缓存失败...')
+
+
+def save_cache():
+    global translate_cache
+    with open('translate_cache.json', 'w', encoding='utf-8') as f:
+        json.dump(translate_cache, f, ensure_ascii=False, indent=4)
+
+
+load_cache()
 translate_count = 0
 
 
@@ -50,7 +63,7 @@ def build_label(txt):
 # -----------------------------------------------------------------
 # Translate Text
 # -----------------------------------------------------------------
-def translate_text(text, source_lang='en', target_lang='zh', engine='OpenAI'):
+def translate_text(text, source_lang='en', target_lang='zh', engine='OpenAI', retry=True):
     if len(text) < 2:
         return text
     # 检查缓存
@@ -58,14 +71,14 @@ def translate_text(text, source_lang='en', target_lang='zh', engine='OpenAI'):
         return translate_cache[text]
 
     if engine == 'OpenAI':
-        return translate_text_by_openai(text)
+        return translate_text_by_openai(text, retry)
     else:
         return translate_text_by_libre_translate(text, source_lang, target_lang)
 
 
-
-def translate_text_by_openai(text):
+def translate_text_by_openai(text, retry=True):
     global translate_count
+    global translate_cache
     headers = {
         "Content-Type": "application/json;charset=UTF-8",
         "Authorization": OpenAIKey
@@ -75,7 +88,7 @@ def translate_text_by_openai(text):
         "messages": [
             {
                 "role": "system",
-                "content": "你是一个专业的工控安全领域翻译 API 接口，将我发给你的 ATT&CK 框架相关的英文文本翻译成中文。注意保持原有格式，且专有名词及链接不做翻译, 并按照以下 json 格式返回给我：\n\n{\"translatedText\": \"翻译结果\"}\n还要注意不要返回无效的转义字符。"
+                "content": "你是一个专业的网络安全领域翻译 API 接口，请结合你的专业知识将我发给你的 ATT&CK 框架相关的英文文本翻译成中文。注意保持原有格式，且专有名词及链接不做翻译, 并按照以下 json 格式返回给我：\n\n{\"translatedText\": \"翻译结果\"}\n还要注意不要返回无效的转义字符。"
             },
             {
                 "role": "user",
@@ -119,23 +132,34 @@ def translate_text_by_openai(text):
                         translated_text = translated_text.rstrip()[:-1]
                         print("正则截取...")
                 if translated_text == '':
-                    print(f"翻译失败: {text} - {response_content}，将在 10 秒后重试...")
-                    time.sleep(30)
+                    if retry:
+                        print(f"翻译失败: {text} - {response_content}，将在 30 秒后重试...")
+                        time.sleep(30)
+                        load_cache()
+                    else:
+                        translate_cache[text] = text
+                        save_cache()
+                        translate_count += 1
+                        time.sleep(5)
+                        return text
                 else:
                     translate_cache[text] = translated_text  # 存储翻译结果到缓存
-                    with open('translate_cache.json', 'w', encoding='utf-8') as ff:
-                        json.dump(translate_cache, ff, ensure_ascii=False, indent=4)
+                    save_cache()
                     translate_count += 1
-                    time.sleep(15)
+                    time.sleep(5)
                     return translated_text
             elif response.status_code == 429:
-                print("已达到每24小时发送信息的限制。")
+                print("代理节点已达到每24小时发送信息的限制。请更换代理节点后再试。")
                 exit(1)
+            elif response.status_code == 500 or response.status_code == 504 or response.status_code == 403:
+                print(f"Error: {response.status_code}, 10 秒后重试")
+                time.sleep(5)
             else:
-                return f"Error: {response.status_code}"  # time.sleep(30)
-        except Exception as e:
-            print(f"请求失败: {text}，将在 10 秒后重试...")
-            time.sleep(10)
+                print(f"Error: {response.status_code}")
+                time.sleep(30)
+        except Exception:
+            print(f"请求失败: {text}，将在 3 秒后重试...")
+            time.sleep(3)
 
 
 def translate_text_by_libre_translate(text, source_lang='en', target_lang='zh'):
@@ -168,7 +192,8 @@ def translate_obj(o):
     if args.localization == 'en':
         return
     if o.get('name'):
-        name = translate_text(o['name'], 'en', args.localization)
+        # 软件名、团队名等翻译困难的名称若翻译失败后不重试
+        name = translate_text(o['name'], 'en', args.localization, "OpenAI", o.get('type') not in ['malware', 'intrusion-set', 'tool'])
         if len(name) != 0:
             o['name'] = o['name'] + '(' + name + ')'
     if o.get('description'):
@@ -249,7 +274,7 @@ def build_objects(obj):
         aliases = None
     if aliases:
         for alias in aliases:
-            name = translate_text(alias, 'en', args.localization)
+            name = translate_text(alias, 'en', args.localization, "OpenAI", obj['type'] not in ['malware', 'intrusion-set', 'tool'])
             if len(name) != 0 and name != alias:
                 alias = alias + '(' + name + ')'
             # 建立别名关系
@@ -411,6 +436,5 @@ for obj in data['objects']:
 print("翻译次数: " + str(translate_count))
 # 保存翻译缓存为本地 json 文件
 if args.engine != 'OpenAI':
-    with open('translate_cache.json', 'w', encoding='utf-8') as f:
-        json.dump(translate_cache, f, ensure_ascii=False, indent=4)
+    save_cache()
 # End
