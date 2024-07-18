@@ -276,4 +276,4 @@ java/src/test/resources/data/
 .env
 /python/sa/*.json
 /python/binance/key.json
-/python/suricata/csa.rules
+/python/suricata/*.rules
