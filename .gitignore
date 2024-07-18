@@ -275,3 +275,5 @@ java/src/test/resources/data/
 /python/winevent/parsed_events.csv
 .env
 /python/sa/*.json
+/python/binance/key.json
+/python/suricata/csa.rules
