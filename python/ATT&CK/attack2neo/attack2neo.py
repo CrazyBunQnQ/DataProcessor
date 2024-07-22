@@ -193,7 +193,8 @@ def translate_obj(o):
         return
     if o.get('name'):
         # 软件名、团队名等翻译困难的名称若翻译失败后不重试
-        name = translate_text(o['name'], 'en', args.localization, "OpenAI", o.get('type') not in ['malware', 'intrusion-set', 'tool'])
+        name = translate_text(o['name'], 'en', args.localization, "OpenAI",
+                              o.get('type') not in ['malware', 'intrusion-set', 'tool'])
         if len(name) != 0:
             o['name'] = o['name'] + '(' + name + ')'
     if o.get('description'):
@@ -274,7 +275,8 @@ def build_objects(obj):
         aliases = None
     if aliases:
         for alias in aliases:
-            name = translate_text(alias, 'en', args.localization, "OpenAI", obj['type'] not in ['malware', 'intrusion-set', 'tool'])
+            name = translate_text(alias, 'en', args.localization, "OpenAI",
+                                  obj['type'] not in ['malware', 'intrusion-set', 'tool'])
             if len(name) != 0 and name != alias:
                 alias = alias + '(' + name + ')'
             # 建立别名关系
