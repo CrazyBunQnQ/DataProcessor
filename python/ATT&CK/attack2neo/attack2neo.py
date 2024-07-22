@@ -84,7 +84,7 @@ def translate_text_by_openai(text, retry=True):
         "Authorization": OpenAIKey
     }
     payload = {
-        "model": "gpt-3.5-turbo",
+        "model": "gpt-4o-mini",
         "messages": [
             {
                 "role": "system",
