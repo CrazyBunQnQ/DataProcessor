@@ -237,7 +237,7 @@ def build_objects(obj):
     if obj.get('x_mitre_platforms'):
         props['platforms'] = obj['x_mitre_platforms']
     if obj.get('labels'):
-        props['labels'] = obj['labels']
+        props['tags'] = obj['labels']
     if obj.get('x_mitre_deprecated'):
         props['deprecated'] = obj['x_mitre_deprecated']
     if obj.get('x_mitre_detection'):
