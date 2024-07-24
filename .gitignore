@@ -277,3 +277,4 @@ java/src/test/resources/data/
 /python/sa/*.json
 /python/binance/key.json
 /python/suricata/*.rules
+/python/suricata/rules/
