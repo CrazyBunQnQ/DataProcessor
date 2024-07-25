@@ -279,3 +279,4 @@ java/src/test/resources/data/
 /python/suricata/*.rules
 /python/suricata/rules/
 /python/contacts/contacts.csv
+*.vcf
