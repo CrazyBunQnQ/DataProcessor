@@ -1,4 +1,5 @@
 import os
+import vobject
 import random
 import time
 
@@ -6,7 +7,7 @@ import requests
 
 base_url = "https://192.168.0.239:9002"
 m3_cookie = 'JSESSIONID=C510D7499F4CA4130272'
-save_file = 'contacts.csv'
+save_file = 'contacts.vcf'
 saved_contacts = set()
 saved_deps = set()
 
@@ -77,8 +78,16 @@ def save_contacts(department_id):
             contact = f'{member["name"]},{member["postName"]},{member["tel"]},{member["id"]}'
             if contact not in saved_contacts:
                 saved_contacts.add(contact)
-                with open(save_file, 'a', encoding='utf-8') as f:
-                    f.write(contact + '\n')
+                vcard = vobject.vCard()
+                # 设置联系人信息
+                vcard.add('n').value = vobject.vcard.Name(family="", given=member["name"], additional="")
+                vcard.add('fn').value = member["name"]
+                vcard.add('title').value = member["postName"]
+                vcard.add('tel').value = member["tel"]
+                vcard.add('uid').value = member["id"]
+                vcard.add('org').value = ["珞安"]
+                with open(save_file, 'ab') as f:
+                    f.write(vcard.serialize().encode('utf-8'))
     if child_departments:
         for child_department in child_departments:
             print(f'Saving contacts for department {child_department["name"]}')
