@@ -282,3 +282,4 @@ java/src/test/resources/data/
 *.vcf
 __pycache__
 *.pyc
+detected_faces
