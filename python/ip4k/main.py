@@ -26,6 +26,8 @@ while cap.isOpened():
     if not ret:
         print("无法接收帧 (stream end?). Exiting ...")
         break
+    # 将帧旋转180°
+    frame = cv2.rotate(frame, cv2.ROTATE_180)
 
     # 使用 MTCNN 检测人脸
     boxes, _ = mtcnn.detect(frame)
@@ -53,6 +55,9 @@ while cap.isOpened():
         break
 
     frame_count += 1
+
+    # 性能太差了，读1帧跳一帧
+    cap.grab()
 
 # 释放资源
 cap.release()
