@@ -23,16 +23,22 @@ cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 mtcnn = MTCNN(keep_all=True, device='cuda' if torch.cuda.is_available() else 'cpu')
 
 frame_count = 0
-# pretime = datetime.datetime.now()
+# 节省性能, 每多少帧处理一次
+process_every_n_frames = 3
 
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
         print("无法接收帧 (stream end?). Exiting ...")
         break
-    # 将帧旋转180°
-    frame = cv2.rotate(frame, cv2.ROTATE_180)
+    frame_count += 1
+    if frame_count % process_every_n_frames != 0:
+        continue
 
+    # 将帧旋转180°
+    # frame = cv2.rotate(frame, cv2.ROTATE_180)
+
+    # pretime = datetime.datetime.now()
     # 使用 MTCNN 检测人脸
     boxes, _ = mtcnn.detect(frame)
 
@@ -41,10 +47,13 @@ while cap.isOpened():
             # 提取人脸区域
             left, top, right, bottom = map(int, box)
             face_img = frame[top:bottom, left:right]
+            # 分辨率低于 40*40 则忽略
+            if face_img.shape[0] < 35 or face_img.shape[1] < 35:
+                continue
 
             # 生成文件名并保存
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            face_filename = os.path.join(output_dir, f"face_{timestamp}_{frame_count}_{i}.jpg")
+            face_filename = os.path.join(output_dir, f"face_{timestamp}_{i}.jpg")
             cv2.imwrite(face_filename, face_img)
             print(f"保存人脸图片到: {face_filename}")
 
@@ -62,10 +71,6 @@ while cap.isOpened():
         break
 
     # pretime = datetime.datetime.now()
-    frame_count += 1
-
-    # 性能太差了，读1帧跳一帧
-    cap.grab()
 
 # 释放资源
 cap.release()
