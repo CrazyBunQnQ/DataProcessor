@@ -11,15 +11,19 @@ if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 # 连接 RTSP 流
-rtsp_url = 'rtsp://192.168.3.157'
+rtsp_url = 'rtsp://192.168.3.159'
 cap = cv2.VideoCapture(rtsp_url)
 # 设置缓冲区大小
 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+# 设置帧率
+# desired_fps = 25  # 修改为你想要的帧率
+# cap.set(cv2.CAP_PROP_FPS, desired_fps)
 
 # 初始化 MTCNN 模型
 mtcnn = MTCNN(keep_all=True, device='cuda' if torch.cuda.is_available() else 'cpu')
 
 frame_count = 0
+# pretime = datetime.datetime.now()
 
 while cap.isOpened():
     ret, frame = cap.read()
@@ -46,6 +50,9 @@ while cap.isOpened():
 
             # 在图像上绘制矩形框
             cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
+        # current_time = datetime.datetime.now()
+        # 统计用时
+        # print(f"用时: {current_time - pretime}")
 
     # 显示实时监测窗口
     cv2.imshow('Real-time Face Detection', frame)
@@ -54,6 +61,7 @@ while cap.isOpened():
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
+    # pretime = datetime.datetime.now()
     frame_count += 1
 
     # 性能太差了，读1帧跳一帧
