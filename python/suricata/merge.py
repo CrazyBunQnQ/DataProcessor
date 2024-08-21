@@ -1,6 +1,8 @@
 import os
 from datetime import datetime
 
+exclude_file_list = ['emerging-deleted.rules', 'emerging-info.rules', 'tor.rules']
+
 
 def merge_rules(input_dir, output_file):
     # 获取当前日期作为文件名一部分
@@ -23,6 +25,9 @@ def merge_rules(input_dir, output_file):
     # 打开输出文件准备写入
     with open(output_file, 'w') as output:
         for rules_file in rules_files:
+            # 判断文件名是否属于 exclude_file_list
+            if rules_file in exclude_file_list:
+                continue
             file_path = os.path.join(input_dir, rules_file)
             with open(file_path, 'r') as input_file:
                 output.write(f"# File: {rules_file}\n")
