@@ -15929,7 +15929,7 @@
     "MALWARE Sidecopy APT Related Backdoor Activity": "恶意软件 Sidecopy APT 相关后门活动",
     "MALWARE Powershell/PowHeartBeat CnC Checkin - ICMP": "恶意软件 Powershell/PowHeartBeat CnC 通信 - ICMP",
     "MALWARE Powershell/PowHeartBeat CnC Checkin - HTTPS": "恶意软件 Powershell/PowHeartBeat CnC 通信 - HTTPS",
-    "MALWARE Observed DNS Query to Malicious Powershell Payload Domain (onerecovery .click)": "在 DNS 查询中观察到恶意软件 Malicious Powershell Payload 域名(onerecovery .click)",
+    "MALWARE Observed DNS Query to Malicious Powershell Payload domain (onerecovery .click)": "在 DNS 查询中观察到恶意软件 Malicious Powershell Payload 域名(onerecovery .click)",
     "MALWARE Observed DNS Query to Reverse Shell Payload Domain (opentunnel .quest)": "在 DNS 查询中观察到恶意软件 Reverse Shell Payload 域名(opentunnel .quest)",
     "MALWARE Observed Malicious Powershell Payload Delivery Domain (onerecovery .click) in TLS SNI": "观察到的恶意 Powershell 载荷交付域名 (onerecovery.click) 在 TLS SNI 中",
     "MALWARE Observed Reverse Shell Payload Delivery Domain (opentunnel .quest) in TLS SNI": "在 TLS SNI 中观察到的恶意软件反向 shell 载荷投递域名（opentunnel.quest）",
