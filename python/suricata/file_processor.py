@@ -41,6 +41,7 @@ replacements = {
     r'\[PwnedPiper\]\s*': '',
     r'\[Rapid7\]\s*': '',
     r'\[TGI\]\s*': '',
+    r'\[ANY\.RUN\]\s*': '',
     r'\[ConnectWise CRU\]\s*': '',
     r'\[Abuse\.ch\]\s*': '',
     r'\[GIGAMON_ATR\]\s*': '',
