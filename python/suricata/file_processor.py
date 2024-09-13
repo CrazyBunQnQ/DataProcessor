@@ -6,7 +6,7 @@ import re
 
 from translate import translate_text
 
-exclude_file_list = ['emerging-deleted.rules', 'emerging-info.rules', 'emerging-icmp_info.rules', 'tor.rules']
+exclude_file_list = ['emerging-deleted.rules', 'emerging-info.rules', 'tor.rules']
 file_list = ['emerging-exploit.rules', 'emerging-coinminer.rules', 'emerging-worm.rules']
 classtype_list = ['command-and-control', 'coin-mining', 'credential-theft', 'successful-recon-largescale',
                   'successful-dos', 'non-standard-protocol', 'attempted-recon', 'web-application-attack',
@@ -49,6 +49,7 @@ replacements = {
     r'^ET (\w+)\s*': r'\1 ',
     r'^CNC (\w+)\s*': r'\1 ',
     r'^GPL (\w+)\s*': r'\1 ',
+    r'^RETIRED\s*': '',
     r'^ATTACK_RESPONSE\s*': 'ATTACK RESPONSE ',
     r'^DYNAMIC_DNS\s*': 'DYNAMIC DNS ',
     r'^MOBILE_MALWARE\s*': 'MOBILE MALWARE ',
@@ -76,7 +77,7 @@ def process_files():
                 print(f'analysis {file}...')
                 with open("csa.rules", "a", encoding='utf-8') as output:
                     output.write(f'\n# {file}\n')
-                process_file(os.path.join(root, file), False)
+                process_file(os.path.join(root, file), True)
 
 
 def process_file(filepath, full_file):
@@ -110,6 +111,8 @@ def process_file(filepath, full_file):
 
                     translated_msg = translate_text(original_simple_msg)
                     modified_line = line.replace(f'msg:"{original_msg}"', f'msg:"{translated_msg}"')
+                    # 通过正则表达式 `reference:[^;]+; ?` 将每一行的 reference 信息删掉
+                    modified_line = re.sub(r'reference:[^;]+; ?', '', modified_line)
                     output.write(modified_line)
         if portVars:
             print(f'务必在 suricata 配置文件中(/platform/appconf/dpdk_release.yaml)配置以下端口:  {portVars}')
