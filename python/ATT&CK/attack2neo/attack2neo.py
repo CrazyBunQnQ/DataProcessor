@@ -5,6 +5,7 @@ import json
 import re
 import sys
 import time
+import urllib
 from datetime import datetime
 
 import requests
@@ -63,7 +64,7 @@ def build_label(txt):
 # -----------------------------------------------------------------
 # Translate Text
 # -----------------------------------------------------------------
-def translate_text(text, source_lang='en', target_lang='zh', engine='OpenAI', retry=True):
+def translate_text(text, source_lang='en', target_lang='zh', engine='Google', retry=True):
     if len(text) < 2:
         return text
     # 检查缓存
@@ -72,6 +73,8 @@ def translate_text(text, source_lang='en', target_lang='zh', engine='OpenAI', re
 
     if engine == 'OpenAI':
         return translate_text_by_openai(text, retry)
+    if engine == 'Google':
+        return translate_text_by_google(text)
     else:
         return translate_text_by_libre_translate(text, source_lang, target_lang)
 
@@ -188,12 +191,59 @@ def translate_text_by_libre_translate(text, source_lang='en', target_lang='zh'):
             time.sleep(10)
 
 
+def translate_text_by_google(text, target_lang='zh'):
+    global translate_count
+    base_url = 'https://translate.googleapis.com/translate_a/single'
+
+    # 通过URL编码文本内容
+    text_encode = urllib.parse.quote(text)
+
+    # 构建完整的翻译 URL
+    params = {
+        'client': 'gtx',  # 使用 gtx 客户端（网页接口）
+        'sl': 'en',  # 源语言，自动检测
+        'tl': target_lang,  # 目标语言
+        'dt': 't',  # dt=t 表示请求翻译文本
+        'q': text_encode  # 待翻译文本
+    }
+
+    url = f"{base_url}?client={params['client']}&sl={params['sl']}&tl={params['tl']}&dt={params['dt']}&q={params['q']}"
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.0.0"
+    }
+
+    while True:
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                result = response.json()
+                if result:
+                    # 获取翻译结果
+                    translated_text = ''.join([item[0] for item in result[0]])
+                    translate_cache[text] = translated_text  # 存储翻译结果到缓存
+                    translate_count += 1
+                    save_cache()  # 保存缓存
+                    print(f'Original: {text} —————— 翻译结果: {translated_text}')
+                    time.sleep(1)
+                    return translated_text
+                else:
+                    print(f"翻译失败，未获得翻译结果。")
+                    time.sleep(10)
+            else:
+                print(f"Error: {response.status_code}")
+                time.sleep(10)
+        except Exception as e:
+            print(f"请求失败，将在 10 秒后重试... 错误: {str(e)}")
+            time.sleep(10)
+
+
 def translate_obj(o):
     if args.localization == 'en':
         return
     if o.get('name'):
         # 软件名、团队名等翻译困难的名称若翻译失败后不重试
-        name = translate_text(o['name'], 'en', args.localization, "OpenAI",
+        name = translate_text(o['name'], 'en', args.localization, "Google",
                               o.get('type') not in ['malware', 'intrusion-set', 'tool'])
         if len(name) != 0:
             o['name'] = o['name'] + '(' + name + ')'
@@ -275,7 +325,7 @@ def build_objects(obj):
         aliases = None
     if aliases:
         for alias in aliases:
-            name = translate_text(alias, 'en', args.localization, "OpenAI",
+            name = translate_text(alias, 'en', args.localization, "Google",
                                   obj['type'] not in ['malware', 'intrusion-set', 'tool'])
             if len(name) != 0 and name != alias:
                 alias = alias + '(' + name + ')'
@@ -321,21 +371,22 @@ def build_relations(obj):
 # set command-line arguments and parsing options
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--debug', help='enter debug mode', default=False, action='store_true')
-parser.add_argument('-f', help='input file name', metavar='<filename>', action='store', required=True)
-parser.add_argument('-g', '--groups', help='import Groups objects (type:intrusion-set)', default=False,
+# parser.add_argument('-f', help='input file name', metavar='<filename>', action='store', required=True)
+parser.add_argument('-f', help='input file name', default='enterprise-attack.json', metavar='<filename>', action='store', required=False)
+parser.add_argument('-g', '--groups', help='import Groups objects (type:intrusion-set)', default=True,
                     action='store_true')
-parser.add_argument('-s', '--softwares', help='import Softwares objects (type:malware)', default=False,
+parser.add_argument('-s', '--softwares', help='import Softwares objects (type:malware)', default=True,
                     action='store_true')
-parser.add_argument('-o', '--tools', help='import Tools objects (type:tool)', default=False, action='store_true')
+parser.add_argument('-o', '--tools', help='import Tools objects (type:tool)', default=True, action='store_true')
 parser.add_argument('-t', '--techniques',
-                    help='import Techniques objects (type:attack-pattern and type:course-of-action)', default=False,
+                    help='import Techniques objects (type:attack-pattern and type:course-of-action)', default=True,
                     action='store_true')
-parser.add_argument('-r', '--relations', help='import Relations objects (type:relationship)', default=False,
+parser.add_argument('-r', '--relations', help='import Relations objects (type:relationship)', default=True,
                     action='store_true')
 parser.add_argument('-u', '--unknown', help='import other objects', default=True, action='store_true')
 parser.add_argument('-l', '--localization', help='translated into local languages', default='zh',
                     action='store', required=False)
-parser.add_argument('-e', '--engine', help='translation engine (OpenAI, LibreTranslate)', default='OpenAI',
+parser.add_argument('-e', '--engine', help='translation engine (Google, OpenAI, LibreTranslate)', default='Google',
                     action='store', required=False)
 args = parser.parse_args()
 
