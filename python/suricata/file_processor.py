@@ -13,7 +13,7 @@ classtype_list = ['command-and-control', 'coin-mining', 'credential-theft', 'suc
                   'trojan-activity', 'unsuccessful-user', 'successful-user', 'successful-admin', 'shellcode-detect',
                   'attempted-user', 'attempted-admin']
 keywords = ['mitre_', 'attack_target']
-exclude_keywords = []
+exclude_keywords = ['HTTP GET Request XOR Key', 'HTTP POST Request XOR Key']
 # 定义 Set
 portVars = set()
 
