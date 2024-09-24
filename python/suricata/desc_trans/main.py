@@ -1,13 +1,13 @@
 import ast
-import re
-from multiprocessing import Process
 from typing import Type
 
+from tqdm import tqdm
+
 from suricata.desc_trans.trans.bot_factory import BaseBot
+from suricata.desc_trans.trans.openai_bot import OpenaiBot
 from suricata.desc_trans.trans.tongyi_bot import TongyiBot
 from suricata.desc_trans.trans.xinghuo_bot import XinghuoBot
 from suricata.desc_trans.trans.yiyan_bot import YiyanBot
-from tqdm import tqdm
 
 dict_cache = set()
 
@@ -57,6 +57,8 @@ class BotFactory:
 
 
 def init_bots():
+    open_api = BotFactory(OpenaiBot).instance()
+    bots[open_api.get_seq()] = open_api
     tong_yi = BotFactory(TongyiBot).instance()
     bots[tong_yi.get_seq()] = tong_yi
     xing_huo = BotFactory(XinghuoBot).instance()
