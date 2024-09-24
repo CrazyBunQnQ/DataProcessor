@@ -25,7 +25,7 @@ def trans(bot_seq: int, i_file: str, o_file: str):
             if len(line) == 0 or line == '\n' or line.startswith("#"):
                 continue
             try:
-                resp = b.ask_q(line, dict_cache)
+                resp = b.ask_q(q=line, sid_cache=dict_cache)
                 if len(resp) == 0:
                     continue
             except Exception as e:

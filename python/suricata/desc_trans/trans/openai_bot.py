@@ -9,29 +9,36 @@ from suricata.desc_trans.trans.bot_factory import BaseBot
 API_KEY = os.environ.get("OPENAI_API_KEY")
 # https://api.openai.com
 API_URL = os.environ.get("OPENAI_API_URL")
+if API_URL is None:
+    API_URL = "https://api.openai.com"
 
 
 class OpenaiBot(BaseBot):
     def get_access_token(self):
         pass
 
-    def ask_q(self, q: str, role: str = None, model: str = "gpt-4o-mini") -> dict:
+    def ask_q(self, q: str, sid_cache: dict, role: str = None, model: str = "gpt-4o-mini") -> dict:
         """
         :param q: 对话
         :param model: 模型-默认 gpt-4o-mini
         :param role: 系统角色定义-默认 None
         :return:
         """
+        sid = self.get_sid(q)
+        if sid in sid_cache:
+            return {}
+        msg = self.get_msg(q)
         headers = {
             "Content-Type": "application/json;charset=UTF-8",
-            "Authorization": API_KEY
+            "Authorization": f'Bearer {API_KEY}'
         }
         payload = {
-            "model": "gpt-4o-mini",
+            "model": model,
             "messages": [
                 {
                     "role": "user",
-                    "content": q
+                    'content': f"解释一下如下的 suricata 入侵检测规则，不用给出建议，直观解释一下即可，我需要展示给不懂工控安全的人员去看，我的要求是文字限制在 "
+                               f"100~300字，且不要返回markdown格式，返回字符串即可，以 '此风险指的是' 为开头，返回内容不带双引号，规则如下：{q if len(msg) == 0 else msg}"
                 }
             ]
         }
@@ -44,7 +51,10 @@ class OpenaiBot(BaseBot):
         response = requests.post(f'{API_URL}/v1/chat/completions', headers=headers, json=payload)
         if response.status_code == 200:
             # 转为 json 格式
-            return json.loads(response.text), None
+            resp = json.loads(response.text)
+            content = resp['choices'][0]['message']['content']
+            ans = {'sid': sid, 'result': content}
+            return ans
         elif response.status_code == 429:
             print("代理节点已达到每24小时发送信息的限制。请更换代理节点后再试。")
             # 转为 json 格式
