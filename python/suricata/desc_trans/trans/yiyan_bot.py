@@ -1,13 +1,13 @@
-from suricata.desc_trans.constants import Constants
 from suricata.desc_trans.trans.bot_factory import BaseBot
 
 import json
+import os
 
 import requests
 
 # Constants 文件省略
-API_KEY = Constants.YI_YAN_API_KEY
-SECRET_KEY = Constants.YI_YAN_SECRET_KEY
+API_KEY = os.environ.get("YI_YAN_API_KEY")
+SECRET_KEY = os.environ.get("YI_YAN_SECRET_KEY")
 
 
 class YiyanBot(BaseBot):

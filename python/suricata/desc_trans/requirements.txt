@@ -3,3 +3,5 @@ tqdm
 openai
 requests
 ast
+# pip install --upgrade spark_ai_python
+spark_ai_python

@@ -1,12 +1,12 @@
 import json
+import os
 
-from suricata.desc_trans.constants import Constants
 from suricata.desc_trans.trans.bot_factory import BaseBot
 
 from openai import OpenAI
 
 # Constants 文件省略
-API_KEY = Constants.TONG_YI_API_KEY
+API_KEY = os.environ.get("TONG_YI_API_KEY")
 
 
 class TongyiBot(BaseBot):

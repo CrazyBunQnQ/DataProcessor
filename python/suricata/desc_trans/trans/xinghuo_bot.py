@@ -1,13 +1,13 @@
-from suricata.desc_trans.constants import Constants
+import os
 from suricata.desc_trans.trans.bot_factory import BaseBot
 
 from sparkai.llm.llm import ChatSparkLLM, ChunkPrintHandler
 from sparkai.core.messages import ChatMessage
 
 # Constants 文件省略
-APP_ID = Constants.SPARKAI_APP_ID
-API_SECRET = Constants.SPARKAI_API_SECRET
-API_KEY = Constants.SPARKAI_API_KEY
+APP_ID = os.environ.get("SPARKAI_APP_ID")
+API_SECRET = os.environ.get("SPARKAI_API_SECRET")
+API_KEY = os.environ.get("SPARKAI_API_KEY")
 spark = None
 
 
