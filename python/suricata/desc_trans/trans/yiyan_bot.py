@@ -49,7 +49,7 @@ class YiyanBot(BaseBot):
 
     @staticmethod
     def get_seq() -> int:
-        return 0
+        return 5
 
 
 if __name__ == '__main__':
