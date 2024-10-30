@@ -53,6 +53,7 @@ class OpenaiBot(BaseBot):
             # 转为 json 格式
             resp = json.loads(response.text)
             content = resp['choices'][0]['message']['content']
+            print(content)
             ans = {'sid': sid, 'result': content}
             return ans
         elif response.status_code == 429:
@@ -60,8 +61,8 @@ class OpenaiBot(BaseBot):
             # 转为 json 格式
             return None, json.loads(response.text)
         else:
-            print(f"Error: {response.status_code}")
-            return None, response.text
+            print(f"Error: {response.status_code} —— {response.text}")
+            return {}
 
     @staticmethod
     def get_seq() -> int:

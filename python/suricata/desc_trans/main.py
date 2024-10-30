@@ -25,6 +25,7 @@ def trans(bot_seq: int, i_file: str, o_file: str):
             if len(line) == 0 or line == '\n' or line.startswith("#"):
                 continue
             try:
+                # TODO 更新规则后可能内容变了 id 没变
                 resp = b.ask_q(q=line, sid_cache=dict_cache)
                 if len(resp) == 0:
                     continue
