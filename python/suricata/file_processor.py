@@ -29,6 +29,7 @@ replacements = {
     r'^ET HUNTING\s*': '',
     r'^ET INFO\s*': '',
     r'^ET CNC\s*': '',
+    r'^ET COMPROMISED\s*': '',
     r'^GPL EXPLOIT\s*': '',
     r'^DRIVEBY\s*': '',
     r'\[NCC GROUP\]\s*': '',

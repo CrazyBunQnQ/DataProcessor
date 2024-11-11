@@ -13,6 +13,7 @@ from file_processor import process_files
 def download_rules(version):
     """
     Download the rules file from the specified URL using the version number.
+    https://rules.emergingthreats.net/open/suricata-5.0.0/emerging.rules.tar.gz
     """
     url = f"https://rules.emergingthreats.net/open/suricata-{version}/emerging.rules.tar.gz"
     response = requests.get(url)
