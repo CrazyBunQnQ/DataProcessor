@@ -28,7 +28,8 @@ class OpenaiBot(BaseBot):
         sid = self.get_sid(q)
         if sid in sid_cache:
             return {}
-        # time.sleep(45) # 白嫖的 api 建议加上延迟
+        # 白嫖的 api 建议加上延迟
+        # time.sleep(45)
         msg = self.get_msg(q)
         headers = {
             "Content-Type": "application/json;charset=UTF-8",
@@ -65,12 +66,17 @@ class OpenaiBot(BaseBot):
         elif response.status_code == 500 and ('captcha' in response.text or 'detected' in response.text):
             print("需要进行人机验证才能够正常使用。。")
             return {}
+        elif response.status_code == 500 and ('requirement' in response.text or 'unable' in response.text):
+            # Error: 500 —— {"error":"unable to check chat requirement"}
+            print(f"Error: {response.status_code} —— {response.text} —— {msg}")
+            time.sleep(30)
+            return {}
         elif response.status_code == 500 or response.status_code == 504 or response.status_code == 403:
-            print(f"Error: {response.status_code} —— {response.text}")
+            print(f"Error: {response.status_code} —— {response.text} —— {msg}")
             time.sleep(30)
             return {}
         else:
-            print(f"Error: {response.status_code} —— {response.text}")
+            print(f"Error: {response.status_code} —— {response.text} —— {msg}")
             return {}
 
     @staticmethod
