@@ -1,5 +1,6 @@
 import json
 import os
+import time
 
 import requests
 
@@ -27,6 +28,7 @@ class OpenaiBot(BaseBot):
         sid = self.get_sid(q)
         if sid in sid_cache:
             return {}
+        # time.sleep(45) # 白嫖的 api 建议加上延迟
         msg = self.get_msg(q)
         headers = {
             "Content-Type": "application/json;charset=UTF-8",
@@ -60,6 +62,13 @@ class OpenaiBot(BaseBot):
             print("代理节点已达到每24小时发送信息的限制。请更换代理节点后再试。")
             # 转为 json 格式
             return None, json.loads(response.text)
+        elif response.status_code == 500 and ('captcha' in response.text or 'detected' in response.text):
+            print("需要进行人机验证才能够正常使用。。")
+            return {}
+        elif response.status_code == 500 or response.status_code == 504 or response.status_code == 403:
+            print(f"Error: {response.status_code} —— {response.text}")
+            time.sleep(30)
+            return {}
         else:
             print(f"Error: {response.status_code} —— {response.text}")
             return {}
