@@ -60,11 +60,11 @@ class BaseBot(ABC):
         return sid
 
     def get_msg(self, line: str) -> str:
-        # sub_line = line[line.index(" (msg:")]
-        # msg = sub_line[6:sub_line.index("\";")]
-        # return msg
-        match = re.search(pattern, line)
-        return "" if not match else match.group(1)
+        # 删除规则中的 created、updated、reviewed 信息
+        line = re.sub(r",?\s?(created|updated|reviewed)_at\s[\d_]+", "", line)
+        # 删除规则中的 classtype、sid、rev、nocase 信息
+        line = re.sub(r";?\s?(classtype|sid|rev|nocase)\s*:\s*[\w-]+", "", line)
+        return line
 
 
 class BotFactory:
