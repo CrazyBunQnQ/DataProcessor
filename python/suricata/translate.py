@@ -183,6 +183,5 @@ def translate_text(text, retry=True):
     # 检查缓存
     if text in translate_cache:
         return translate_cache[text]
-    # return translate_by_openai(text, retry)
     # return translate_by_youdao(text)
     return translate_by_google(text)
