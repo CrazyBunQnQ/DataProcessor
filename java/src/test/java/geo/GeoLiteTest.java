@@ -50,6 +50,7 @@ public class GeoLiteTest {
                 dirPath = dirPath + files[0].getName() + File.separator;
             }
         }
+        readCnData("geo_cn/cn_region.csv");
         readLocations(dirPath + "GeoLite2-City-Locations-zh-CN.csv");
         removeDuplicates(dirPath + "GeoLite2-City-Blocks-IPv4.csv");
         convertToCityInfo(dirPath + "GeoLite2-City-Blocks-IPv4.csv", dirPath + "Geography.json");
