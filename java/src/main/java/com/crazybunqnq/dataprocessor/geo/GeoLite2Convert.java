@@ -358,11 +358,13 @@ public class GeoLite2Convert {
                         enName = enNameInfo[3]; // 使用简单英文名称
                     }
                     
+                    // 清理JSON字符串中的特殊字符
+                    String cleanedEnName = cleanJsonString(enName);
                     String entry;
                     if (parentId == null || "".equals(parentId.trim()) || geonameId.equals(parentId)) {
-                        entry = String.format("{\"latitude\": %s, \"name\": \"%s\", \"enName\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": null, \"longitude\": %s}", latitude, simpleName, enName, geonameId, geonameId, longitude);
+                        entry = String.format("{\"latitude\": %s, \"name\": \"%s\", \"enName\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": null, \"longitude\": %s}", latitude, simpleName, cleanedEnName, geonameId, geonameId, longitude);
                     } else {
-                        entry = String.format("{\"latitude\": %s, \"name\": \"%s\", \"enName\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": \"%s\", \"longitude\": %s}", latitude, simpleName, enName, geonameId, geonameId, parentId, longitude);
+                        entry = String.format("{\"latitude\": %s, \"name\": \"%s\", \"enName\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": \"%s\", \"longitude\": %s}", latitude, simpleName, cleanedEnName, geonameId, geonameId, parentId, longitude);
                         pidNameMap.put(key, geonameId);
                     }
                     fw.write(entry);
@@ -580,6 +582,46 @@ public class GeoLite2Convert {
         sheng.put("四川", "四川省");
         sheng.put("贵州", "贵州省");
         sheng.put("云南", "云南省");
+    }
+    
+    /**
+     * 清理JSON字符串中的特殊字符，确保生成有效的JSON格式
+     * 
+     * @param input 输入字符串
+     * @return 清理后的字符串
+     */
+    private static String cleanJsonString(String input) {
+        if (input == null) {
+            return "";
+        }
+        
+        // 先移除首尾空白字符
+        String cleaned = input.trim();
+        
+        // 如果字符串以引号开头和结尾，先移除这些引号
+        if (cleaned.startsWith("\"") && cleaned.endsWith("\"") && cleaned.length() > 1) {
+            cleaned = cleaned.substring(1, cleaned.length() - 1);
+        }
+        
+        // 处理已经转义的字符串，先反转义再重新转义
+        cleaned = cleaned
+                .replace("\\\"", "\"")   // 先反转义双引号
+                .replace("\\\\", "\\")   // 先反转义反斜杠
+                .replace("\\n", "\n")    // 先反转义换行符
+                .replace("\\r", "\r")    // 先反转义回车符
+                .replace("\\t", "\t")    // 先反转义制表符
+                .replace("\\b", "\b")    // 先反转义退格符
+                .replace("\\f", "\f");   // 先反转义换页符
+        
+        // 重新转义JSON中的特殊字符
+        return cleaned
+                .replace("\\", "\\\\")   // 转义反斜杠（必须先处理）
+                .replace("\"", "\\\"")   // 转义双引号
+                .replace("\n", "\\n")    // 转义换行符
+                .replace("\r", "\\r")    // 转义回车符
+                .replace("\t", "\\t")    // 转义制表符
+                .replace("\b", "\\b")    // 转义退格符
+                .replace("\f", "\\f");   // 转义换页符
     }
 
 }
