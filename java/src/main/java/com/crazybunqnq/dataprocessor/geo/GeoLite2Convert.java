@@ -178,7 +178,7 @@ public class GeoLite2Convert {
      * @param locationsPath
      */
     public static void readLocations(String locationsPath) {
-        try (BufferedReader br = new BufferedReader(new FileReader(locationsPath))) {
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(locationsPath), java.nio.charset.StandardCharsets.UTF_8))) {
             String line;
             br.readLine(); // Skip header
             while ((line = br.readLine()) != null) {
@@ -229,7 +229,7 @@ public class GeoLite2Convert {
      * @param enLocationsPath
      */
     public static void readEnLocations(String enLocationsPath) {
-        try (BufferedReader br = new BufferedReader(new FileReader(enLocationsPath))) {
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(enLocationsPath), java.nio.charset.StandardCharsets.UTF_8))) {
             String line;
             br.readLine(); // Skip header
             while ((line = br.readLine()) != null) {
@@ -254,7 +254,7 @@ public class GeoLite2Convert {
      */
     public static void removeDuplicates(String ipv4Path) {
         Set<String> tmpId = new HashSet<>();
-        try (BufferedReader br = new BufferedReader(new FileReader(ipv4Path))) {
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(ipv4Path), java.nio.charset.StandardCharsets.UTF_8))) {
             String line;
             br.readLine(); // Skip header
             while ((line = br.readLine()) != null) {
@@ -291,7 +291,8 @@ public class GeoLite2Convert {
      * 输出格式包括城市的纬度、经度、名称、ID、排序值以及父级 ID。
      */
     public static void convertToCityInfo(String ipv4Path, String locationsOutputPath) {
-        try (BufferedReader br = new BufferedReader(new FileReader(ipv4Path)); FileWriter fw = new FileWriter(locationsOutputPath)) {
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(ipv4Path), java.nio.charset.StandardCharsets.UTF_8)); 
+             OutputStreamWriter fw = new OutputStreamWriter(new FileOutputStream(locationsOutputPath), java.nio.charset.StandardCharsets.UTF_8)) {
             String line;
             br.readLine(); // Skip header
             fw.write("[");
@@ -380,7 +381,7 @@ public class GeoLite2Convert {
         }
     }
 
-    public static void convertCnRegionToCityInfo(String csvPath, FileWriter fw) {
+    public static void convertCnRegionToCityInfo(String csvPath, Writer fw) {
         try (InputStream is = GeoLite2Convert.class.getClassLoader().getResourceAsStream(csvPath);
              BufferedReader br = new BufferedReader(new InputStreamReader(is, "UTF-8"))) {
 
@@ -427,7 +428,8 @@ public class GeoLite2Convert {
      */
     public static void convertToIpInfo(String ipv4Path, String ipOutputPath) {
         long id = 1;
-        try (BufferedReader br = new BufferedReader(new FileReader(ipv4Path)); FileWriter fw = new FileWriter(ipOutputPath)) {
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(ipv4Path), java.nio.charset.StandardCharsets.UTF_8)); 
+             OutputStreamWriter fw = new OutputStreamWriter(new FileOutputStream(ipOutputPath), java.nio.charset.StandardCharsets.UTF_8)) {
             String line;
             br.readLine(); // Skip header
             while ((line = br.readLine()) != null) {
