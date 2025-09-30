@@ -12,9 +12,20 @@ import java.util.Objects;
 public class Geography {
     private String id;
     private String name;
+    private String enName;
     private String parentId;
     private String lat;
     private String lng;
+    
+    // 兼容原有的构造函数
+    public Geography(String id, String name, String parentId, String lat, String lng) {
+        this.id = id;
+        this.name = name;
+        this.enName = "";
+        this.parentId = parentId;
+        this.lat = lat;
+        this.lng = lng;
+    }
 
     @Override
     public boolean equals(Object o) {

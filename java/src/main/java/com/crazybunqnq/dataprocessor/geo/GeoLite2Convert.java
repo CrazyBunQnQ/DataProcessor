@@ -47,6 +47,10 @@ public class GeoLite2Convert {
     private static Map<String, Geography> cnRegionMap = new HashMap<>();
     private static Map<String, String> chineseProvincesAndCitiesRewritten = new HashMap<>();
     private static Map<String, String> cnIdPidMap = new HashMap<>();
+    /**
+     * id 对应的英文名称
+     */
+    private static Map<String, String[]> idEnNameMap = new HashMap<>();
 
     public static void main(String[] args) {
     }
@@ -220,6 +224,30 @@ public class GeoLite2Convert {
     }
 
     /**
+     * 从指定路径读取英文地点数据文件，解析并处理各层级（国家、省份、城市）的英文地点信息，并存储到全局映射表中。
+     *
+     * @param enLocationsPath
+     */
+    public static void readEnLocations(String enLocationsPath) {
+        try (BufferedReader br = new BufferedReader(new FileReader(enLocationsPath))) {
+            String line;
+            br.readLine(); // Skip header
+            while ((line = br.readLine()) != null) {
+                String[] values = line.split(",");
+                String id = values[0];
+                String contryEnName = values[5];
+                String provinceEnName = values[7];
+                String cityEnName = values[10].replace("\"", "");
+                
+                String simpleEnName = !cityEnName.isEmpty() ? cityEnName : (!provinceEnName.isEmpty() ? provinceEnName : contryEnName);
+                idEnNameMap.put(id, new String[]{contryEnName, provinceEnName, cityEnName, simpleEnName});
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
      * 从指定文件中读取数据，去除重复的地名标识符（geonameId），并根据映射关系更新和存储唯一的地名信息，同时记录被忽略的重复标识符。
      *
      * @param ipv4Path
@@ -322,11 +350,18 @@ public class GeoLite2Convert {
                         fw.write("\n");
                         firstEntry = false;
                     }
+                    // 获取英文名称
+                    String enName = "";
+                    if (idEnNameMap.containsKey(geonameId)) {
+                        String[] enNameInfo = idEnNameMap.get(geonameId);
+                        enName = enNameInfo[3]; // 使用简单英文名称
+                    }
+                    
                     String entry;
                     if (parentId == null || "".equals(parentId.trim()) || geonameId.equals(parentId)) {
-                        entry = String.format("{\"latitude\": %s, \"name\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": null, \"longitude\": %s}", latitude, simpleName, geonameId, geonameId, longitude);
+                        entry = String.format("{\"latitude\": %s, \"name\": \"%s\", \"enName\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": null, \"longitude\": %s}", latitude, simpleName, enName, geonameId, geonameId, longitude);
                     } else {
-                        entry = String.format("{\"latitude\": %s, \"name\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": \"%s\", \"longitude\": %s}", latitude, simpleName, geonameId, geonameId, parentId, longitude);
+                        entry = String.format("{\"latitude\": %s, \"name\": \"%s\", \"enName\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": \"%s\", \"longitude\": %s}", latitude, simpleName, enName, geonameId, geonameId, parentId, longitude);
                         pidNameMap.put(key, geonameId);
                     }
                     fw.write(entry);
@@ -372,8 +407,8 @@ public class GeoLite2Convert {
                 String lat = tokens[4].trim();
 
                 String entry = String.format(
-                        "{\"latitude\": %s, \"name\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": \"%s\", \"longitude\": %s}",
-                        lat, name, id, id, parentId, lng);
+                        "{\"latitude\": %s, \"name\": \"%s\", \"enName\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": \"%s\", \"longitude\": %s}",
+                        lat, name, "", id, id, parentId, lng);
 
                 fw.write(",\n");
                 fw.write(entry);
@@ -424,7 +459,16 @@ public class GeoLite2Convert {
                     if (cityInfo == null || cityInfo.isEmpty()) {
                         continue;
                     }
-                    String result = "{\"city\":\"" + cityInfo + "\",\"start_ip\":" + ips[0] + ",\"id\":\"" + id + "\",\"end_ip\":" + ips[1] + "}";
+                    
+                    // 获取英文名称
+                    String enCityInfo = "";
+                    if (idEnNameMap.containsKey(geonameId)) {
+                        String[] enNameInfo = idEnNameMap.get(geonameId);
+                        enCityInfo = enNameInfo[0] + " " + enNameInfo[1] + " " + enNameInfo[2];
+                        enCityInfo = enCityInfo.trim();
+                    }
+                    
+                    String result = "{\"city\":\"" + cityInfo + "\",\"enName\":\"" + enCityInfo + "\",\"start_ip\":" + ips[0] + ",\"id\":\"" + id + "\",\"end_ip\":" + ips[1] + "}";
                     fw.write(result + "\n");
                     id++;
                 } else {
