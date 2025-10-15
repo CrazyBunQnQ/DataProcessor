@@ -472,7 +472,11 @@ public class GeoLite2Convert {
                         enCityInfo = enCityInfo.trim();
                     }
                     
-                    String result = "{\"city\":\"" + cityInfo + "\",\"enName\":\"" + enCityInfo + "\",\"start_ip\":" + ips[0] + ",\"id\":\"" + id + "\",\"end_ip\":" + ips[1] + "}";
+                    // 清理JSON字符串中的特殊字符
+                    String cleanedCityInfo = cleanJsonString(cityInfo);
+                    String cleanedEnCityInfo = cleanJsonString(enCityInfo);
+                    
+                    String result = "{\"city\":\"" + cleanedCityInfo + "\",\"enName\":\"" + cleanedEnCityInfo + "\",\"start_ip\":" + ips[0] + ",\"id\":\"" + id + "\",\"end_ip\":" + ips[1] + "}";
                     fw.write(result + "\n");
                     id++;
                 } else {
