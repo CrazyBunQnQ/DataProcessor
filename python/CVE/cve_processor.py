@@ -2,30 +2,98 @@
 # -*- coding: utf-8 -*-
 """
 CVE数据处理脚本
-将XML格式的漏洞数据转换为JSON格式，并实现去重合并功能
+将XML格式的漏洞数据转换为JSON格式，并实现增量更新功能
+支持基于现有数据的去重和ID递增
 """
 
 import os
 import json
 import xml.etree.ElementTree as ET
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 import re
 
 
 class CVEProcessor:
     """CVE数据处理器"""
     
-    def __init__(self, data_dir: str = "data"):
+    def __init__(self, data_dir: str = "data", existing_data_file: str = None):
         """
         初始化CVE处理器
         
         Args:
             data_dir: 数据目录路径
+            existing_data_file: 现有CVE数据文件路径
         """
         self.data_dir = data_dir
+        self.existing_data_file = existing_data_file
         self.cve_data = {}  # 用于存储去重后的CVE数据，key为CVE ID
+        self.existing_cve_ids = set()  # 现有CVE ID集合
+        self.existing_cnnvd_ids = set()  # 现有CNNVD ID集合
+        self.next_id = 1  # 下一个可用的ID
+        self.existing_data_count = 0  # 现有数据数量
         
+        # 如果指定了现有数据文件，则加载现有数据
+        if self.existing_data_file:
+            self.load_existing_data()
+    
+    def load_existing_data(self) -> None:
+        """
+        加载现有CVE数据文件，提取CVE和CNNVD ID用于去重
+        采用内存优化的方式处理大文件
+        """
+        if not self.existing_data_file or not os.path.exists(self.existing_data_file):
+            print(f"现有数据文件不存在: {self.existing_data_file}")
+            return
+        
+        print(f"正在加载现有数据: {self.existing_data_file}")
+        file_size = os.path.getsize(self.existing_data_file) / (1024*1024)
+        print(f"文件大小: {file_size:.2f} MB")
+        
+        try:
+            with open(self.existing_data_file, 'r', encoding='utf-8') as f:
+                # 对于大文件，使用流式解析
+                content = f.read()
+                data = json.loads(content)
+                
+                if isinstance(data, list):
+                    self.existing_data_count = len(data)
+                    print(f"现有数据记录数: {self.existing_data_count}")
+                    
+                    # 提取CVE和CNNVD ID
+                    for i, record in enumerate(data):
+                        if i % 20000 == 0:
+                            print(f"加载进度: {i}/{self.existing_data_count}")
+                        
+                        # 提取CVE ID
+                        cve_id = record.get('cve') or record.get('nvdCve')
+                        if cve_id:
+                            self.existing_cve_ids.add(cve_id)
+                        
+                        # 提取CNNVD ID
+                        cnnvd_id = record.get('cnnvd')
+                        if cnnvd_id:
+                            self.existing_cnnvd_ids.add(cnnvd_id)
+                        
+                        # 更新下一个可用ID
+                        record_id = record.get('id')
+                        if record_id:
+                            try:
+                                id_num = int(record_id)
+                                self.next_id = max(self.next_id, id_num + 1)
+                            except (ValueError, TypeError):
+                                pass
+                    
+                    print(f"加载完成:")
+                    print(f"  现有CVE数量: {len(self.existing_cve_ids)}")
+                    print(f"  现有CNNVD数量: {len(self.existing_cnnvd_ids)}")
+                    print(f"  下一个可用ID: {self.next_id}")
+                    
+        except Exception as e:
+            print(f"加载现有数据时出错: {e}")
+            # 如果加载失败，从1开始
+            self.next_id = 1
+    
     def parse_xml_file(self, xml_file: str) -> List[Dict]:
         """
         解析单个XML文件
@@ -299,6 +367,7 @@ class CVEProcessor:
     def process_all_files(self) -> List[Dict]:
         """
         处理所有XML文件并合并去重
+        支持增量更新，跳过现有数据中已存在的CVE
         
         Returns:
             合并去重后的CVE数据列表
@@ -321,33 +390,56 @@ class CVEProcessor:
         for file in xml_files:
             print(f"  - {os.path.basename(file)}")
         
+        new_records_count = 0
+        skipped_records_count = 0
+        
         # 处理每个文件
         for xml_file in xml_files:
             print(f"\n正在处理: {os.path.basename(xml_file)}")
             cve_list = self.parse_xml_file(xml_file)
             
+            file_new_count = 0
+            file_skipped_count = 0
+            
             # 合并数据，实现去重（以最新月份为准）
             for cve_data in cve_list:
                 cve_id = cve_data.get('cve')
                 if cve_id:
+                    # 检查是否在现有数据中已存在
+                    if cve_id in self.existing_cve_ids:
+                        file_skipped_count += 1
+                        continue
+                    
                     if cve_id not in self.cve_data:
                         # 新的CVE，直接添加
                         self.cve_data[cve_id] = cve_data
+                        file_new_count += 1
                     else:
-                        # 已存在的CVE，比较月份优先级
+                        # 已存在的CVE（在当前处理的数据中），比较月份优先级
                         existing = self.cve_data[cve_id]
                         if self._should_update(existing, cve_data):
                             self.cve_data[cve_id] = cve_data
             
+            new_records_count += file_new_count
+            skipped_records_count += file_skipped_count
+            
             print(f"  处理了 {len(cve_list)} 条记录")
+            print(f"  新增: {file_new_count} 条，跳过: {file_skipped_count} 条")
+        
+        print(f"\n处理汇总:")
+        print(f"  总新增记录: {new_records_count}")
+        print(f"  总跳过记录: {skipped_records_count}")
         
         # 清理内部字段并返回结果
         result = []
+        current_id = self.next_id
+        
         for cve_id, cve_data in self.cve_data.items():
             # 移除内部字段
             clean_data = {k: v for k, v in cve_data.items() if not k.startswith('_')}
-            # 添加ID字段
-            clean_data['id'] = str(len(result) + 1)
+            # 添加ID字段，从现有数据的最大ID继续递增
+            clean_data['id'] = str(current_id)
+            current_id += 1
             result.append(clean_data)
         
         return result
@@ -383,41 +475,69 @@ class CVEProcessor:
         
         return False
     
-    def save_to_json(self, output_file: str, cve_data: List[Dict]) -> None:
+    def save_to_json(self, output_file: str, cve_data: List[Dict], is_incremental: bool = False) -> None:
         """
         保存数据到JSON文件
         
         Args:
             output_file: 输出文件路径
             cve_data: CVE数据列表
+            is_incremental: 是否为增量更新模式
         """
         try:
             with open(output_file, 'w', encoding='utf-8') as f:
                 json.dump(cve_data, f, ensure_ascii=False, indent=2)
-            print(f"\n数据已保存到: {output_file}")
-            print(f"总共处理了 {len(cve_data)} 条唯一CVE记录")
+            
+            if is_incremental:
+                print(f"\n增量数据已保存到: {output_file}")
+                print(f"新增了 {len(cve_data)} 条CVE记录")
+                print(f"现有数据: {self.existing_data_count} 条")
+                print(f"总数据量: {self.existing_data_count + len(cve_data)} 条")
+            else:
+                print(f"\n数据已保存到: {output_file}")
+                print(f"总共处理了 {len(cve_data)} 条唯一CVE记录")
         except Exception as e:
             print(f"保存文件时出错: {e}")
 
 
 def main():
     """主函数"""
-    # 创建处理器
-    processor = CVEProcessor()
+    # 现有数据文件路径
+    existing_data_file = r"D:\Downloads\CVE.json"
+    
+    # 创建处理器，指定现有数据文件
+    processor = CVEProcessor(existing_data_file=existing_data_file)
     
     # 处理所有文件
-    print("开始处理CVE数据...")
+    print("开始处理CVE数据（增量更新模式）...")
     cve_data = processor.process_all_files()
     
     # 生成输出文件名
     current_date = datetime.now().strftime("%Y%m%d")
-    output_file = f"CVE_{current_date}.json"
+    
+    if len(cve_data) > 0:
+        # 有新数据，生成增量文件
+        output_file = f"CVE_incremental_{current_date}.json"
+        is_incremental = True
+    else:
+        # 没有新数据
+        output_file = f"CVE_no_new_data_{current_date}.json"
+        is_incremental = False
     
     # 保存结果
-    processor.save_to_json(output_file, cve_data)
+    processor.save_to_json(output_file, cve_data, is_incremental)
     
     print(f"\n处理完成！")
     print(f"输出文件: {output_file}")
+    
+    if len(cve_data) > 0:
+        print(f"\n增量更新说明:")
+        print(f"- 现有数据文件: {existing_data_file}")
+        print(f"- 现有数据量: {processor.existing_data_count} 条")
+        print(f"- 新增数据量: {len(cve_data)} 条")
+        print(f"- ID范围: {processor.next_id} - {processor.next_id + len(cve_data) - 1}")
+    else:
+        print(f"\n没有发现新的CVE数据，所有数据都已存在于现有文件中。")
 
 
 if __name__ == "__main__":

@@ -283,3 +283,6 @@ java/src/test/resources/data/
 __pycache__
 *.pyc
 detected_faces
+/python/CVE/data
+/python/CVE/*.json
+/python/CVE/*test*
