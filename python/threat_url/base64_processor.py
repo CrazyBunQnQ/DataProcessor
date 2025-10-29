@@ -85,7 +85,7 @@ class Base64Processor:
         处理JSON文件：每行进行base64加密
         """
         # 生成输出文件名
-        self.output_file = self.input_file.with_suffix('.la')
+        self.output_file = self.input_file.with_suffix('.rule')
         
         try:
             with open(self.input_file, 'r', encoding='utf-8') as input_f, \

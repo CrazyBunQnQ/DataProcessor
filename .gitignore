@@ -286,3 +286,6 @@ detected_faces
 /python/CVE/data
 /python/CVE/*.json
 /python/CVE/*test*
+*.rule
+/python/threat_url/threat_urls.json
+
