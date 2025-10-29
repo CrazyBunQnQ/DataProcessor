@@ -147,16 +147,34 @@ class CVEProcessor:
         """
         import re
         
-        # 只处理文本内容中的&符号，不处理已经正确转义的
-        # 使用正则表达式找到标签之间的文本内容
-        def fix_text_content(match):
+        # 1. 修复文本内容中的&符号（不处理已经正确转义的）
+        def fix_ampersand(match):
             text = match.group(0)
             # 只替换没有正确转义的&符号
             text = re.sub(r'&(?!amp;|lt;|gt;|quot;|apos;)', '&amp;', text)
             return text
         
-        # 处理标签之间的文本内容
-        content = re.sub(r'>[^<]*<', fix_text_content, content)
+        # 处理标签之间的文本内容中的&符号
+        content = re.sub(r'>[^<]*<', fix_ampersand, content)
+        
+        # 2. 修复描述文本中的<filename>等伪标签
+        # 将描述文本中的<filename>转义为&lt;filename&gt;
+        def fix_pseudo_tags(text):
+            # 转义常见的伪标签
+            pseudo_tags = ['filename', 'path', 'url', 'script', 'style', 'div', 'span', 'img', 'a']
+            for tag in pseudo_tags:
+                # 转义开始标签
+                text = re.sub(f'<{tag}>', f'&lt;{tag}&gt;', text, flags=re.IGNORECASE)
+                # 转义结束标签
+                text = re.sub(f'</{tag}>', f'&lt;/{tag}&gt;', text, flags=re.IGNORECASE)
+                # 转义自闭合标签
+                text = re.sub(f'<{tag}/>', f'&lt;{tag}/&gt;', text, flags=re.IGNORECASE)
+            return text
+        
+        # 只在vuln-descript标签内容中处理伪标签
+        content = re.sub(r'<vuln-descript>(.*?)</vuln-descript>', 
+                        lambda m: f'<vuln-descript>{fix_pseudo_tags(m.group(1))}</vuln-descript>', 
+                        content, flags=re.DOTALL)
         
         return content
     
