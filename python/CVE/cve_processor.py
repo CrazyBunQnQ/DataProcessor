@@ -548,7 +548,7 @@ class CVEProcessor:
 def main():
     """主函数"""
     # 现有数据文件路径
-    existing_data_file = r"D:\Downloads\CVE.json"
+    existing_data_file = r"E:\LaProjects\2.15\Singularity\framework\framework\src\main\resources\resources\knowledgeBase\CVE.json"
     
     # 创建处理器，指定现有数据文件
     processor = CVEProcessor(existing_data_file=existing_data_file)
