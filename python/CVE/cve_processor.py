@@ -477,7 +477,7 @@ class CVEProcessor:
     
     def save_to_json(self, output_file: str, cve_data: List[Dict], is_incremental: bool = False) -> None:
         """
-        保存数据到JSON文件
+        保存数据到JSON文件，每个对象占一行
         
         Args:
             output_file: 输出文件路径
@@ -486,7 +486,20 @@ class CVEProcessor:
         """
         try:
             with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(cve_data, f, ensure_ascii=False, indent=2)
+                f.write('[\n')  # 开始数组
+                
+                for i, item in enumerate(cve_data):
+                    # 将每个对象序列化为一行JSON
+                    json_line = json.dumps(item, ensure_ascii=False, separators=(',', ':'))
+                    f.write(json_line)
+                    
+                    # 除了最后一个元素，都要添加逗号
+                    if i < len(cve_data) - 1:
+                        f.write(',')
+                    
+                    f.write('\n')  # 换行
+                
+                f.write(']')  # 结束数组
             
             if is_incremental:
                 print(f"\n增量数据已保存到: {output_file}")
