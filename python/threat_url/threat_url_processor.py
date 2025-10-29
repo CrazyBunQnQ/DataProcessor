@@ -25,6 +25,8 @@ class ThreatURLProcessor:
         # 生成带日期的输出文件名
         current_date = datetime.now().strftime("%Y%m%d")
         self.output_file = f"threat_urls_incremental_{current_date}.json"
+        self.existing_data_file = "threat_urls.json"
+        self.existing_ips = set()  # 存储已有的IP地址
         
     def fetch_blacklist_data(self):
         """
@@ -43,6 +45,34 @@ class ThreatURLProcessor:
         except requests.RequestException as e:
             print(f"获取数据失败: {e}")
             return None
+    
+    def load_existing_data(self):
+        """
+        读取已有的威胁URL数据文件，提取IP地址用于去重
+        """
+        if not os.path.exists(self.existing_data_file):
+            print(f"已有数据文件 {self.existing_data_file} 不存在，将创建新文件")
+            return
+        
+        try:
+            print(f"正在读取已有数据文件: {self.existing_data_file}")
+            with open(self.existing_data_file, 'r', encoding='utf-8') as f:
+                for line_num, line in enumerate(f, 1):
+                    line = line.strip()
+                    if line:
+                        try:
+                            data = json.loads(line)
+                            if 'ip' in data:
+                                self.existing_ips.add(data['ip'])
+                        except json.JSONDecodeError as e:
+                            print(f"解析第 {line_num} 行JSON数据失败: {e}")
+                            continue
+            
+            print(f"已加载 {len(self.existing_ips)} 个已有IP地址用于去重")
+            
+        except Exception as e:
+            print(f"读取已有数据文件失败: {e}")
+            self.existing_ips = set()  # 重置为空集合
     
     def parse_date_to_timestamp(self, date_str):
         """
@@ -118,13 +148,14 @@ class ThreatURLProcessor:
     
     def process_data(self, raw_data):
         """
-        处理原始数据，转换为JSON格式
+        处理原始数据，转换为JSON格式，并过滤已存在的IP地址
         """
         if not raw_data:
             return []
         
         lines = raw_data.split('\n')
         processed_data = []
+        duplicate_count = 0
         
         print(f"开始处理 {len(lines)} 行数据...")
         
@@ -134,33 +165,69 @@ class ThreatURLProcessor:
                 
             parsed_item = self.parse_blacklist_line(line)
             if parsed_item:
-                processed_data.append(parsed_item)
+                # 检查IP是否已存在
+                ip_address = parsed_item['ip']
+                if ip_address in self.existing_ips:
+                    duplicate_count += 1
+                    continue  # 跳过已存在的IP
+                else:
+                    # 添加到已存在IP集合中，避免本次处理中的重复
+                    self.existing_ips.add(ip_address)
+                    processed_data.append(parsed_item)
         
-        print(f"处理完成，共解析出 {len(processed_data)} 条有效数据")
+        print(f"处理完成，共解析出 {len(processed_data) + duplicate_count} 条有效数据")
+        print(f"其中新增数据: {len(processed_data)} 条")
+        print(f"重复数据(已跳过): {duplicate_count} 条")
         return processed_data
     
     def save_to_json(self, data):
         """
-        保存数据到JSON文件，每行一条独立的JSON数据
+        保存增量数据到JSON文件，每行一条独立的JSON数据
         """
+        if not data:
+            print("没有新增数据需要保存")
+            return True
+        
         try:
+            # 保存增量数据到单独文件
             with open(self.output_file, 'w', encoding='utf-8') as f:
                 for item in data:
                     json_line = json.dumps(item, ensure_ascii=False, separators=(',', ':'))
                     f.write(json_line + '\n')
             
-            print(f"数据已保存到 {self.output_file}")
-            print(f"共保存 {len(data)} 条记录")
+            print(f"增量数据已保存到 {self.output_file}")
+            print(f"共保存 {len(data)} 条新增记录")
+            
+            # 将新增数据追加到原有数据文件
+            self.append_to_existing_data(data)
+            
             return True
         except Exception as e:
             print(f"保存文件失败: {e}")
             return False
     
+    def append_to_existing_data(self, data):
+        """
+        将新增数据追加到原有数据文件中
+        """
+        try:
+            with open(self.existing_data_file, 'a', encoding='utf-8') as f:
+                for item in data:
+                    json_line = json.dumps(item, ensure_ascii=False, separators=(',', ':'))
+                    f.write(json_line + '\n')
+            
+            print(f"新增数据已追加到 {self.existing_data_file}")
+        except Exception as e:
+            print(f"追加数据到原有文件失败: {e}")
+    
     def run(self):
         """
-        运行完整的数据处理流程
+        运行完整的增量数据处理流程
         """
-        print("开始威胁URL数据处理...")
+        print("开始威胁URL增量数据处理...")
+        
+        # 加载已有数据用于去重
+        self.load_existing_data()
         
         # 获取原始数据
         raw_data = self.fetch_blacklist_data()
@@ -168,21 +235,21 @@ class ThreatURLProcessor:
             print("无法获取数据，程序退出")
             return False
         
-        # 处理数据
+        # 处理数据（包含去重逻辑）
         processed_data = self.process_data(raw_data)
-        if not processed_data:
-            print("没有有效数据可处理")
-            return False
         
-        # 保存数据
+        # 保存增量数据
         success = self.save_to_json(processed_data)
         
         if success:
-            print("威胁URL数据处理完成！")
-            # 显示示例数据
-            print("\n示例数据:")
-            for i, item in enumerate(processed_data[:3]):
-                print(f"{i+1}. {json.dumps(item, ensure_ascii=False)}")
+            if processed_data:
+                print("威胁URL增量数据处理完成！")
+                # 显示示例数据
+                print("\n新增数据示例:")
+                for i, item in enumerate(processed_data[:3]):
+                    print(f"{i+1}. {json.dumps(item, ensure_ascii=False)}")
+            else:
+                print("威胁URL数据处理完成！本次没有新增数据。")
         
         return success
 
