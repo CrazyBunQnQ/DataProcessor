@@ -147,19 +147,12 @@ class CVEProcessor:
         """
         import re
         
-        # 1. 修复文本内容中的&符号（不处理已经正确转义的）
-        def fix_ampersand(match):
-            text = match.group(0)
-            # 只替换没有正确转义的&符号
-            text = re.sub(r'&(?!amp;|lt;|gt;|quot;|apos;)', '&amp;', text)
-            return text
+        # 1. 修复未转义的&符号（但不影响已经正确转义的实体）
+        content = re.sub(r'&(?![a-zA-Z]+;)', '&amp;', content)
         
-        # 处理标签之间的文本内容中的&符号
-        content = re.sub(r'>[^<]*<', fix_ampersand, content)
-        
-        # 2. 修复描述文本中的<filename>等伪标签
-        # 将描述文本中的<filename>转义为&lt;filename&gt;
-        def fix_pseudo_tags(text):
+        # 2. 修复特定标签内容中的问题字符
+        def fix_text_content(text):
+            """修复文本内容中的特殊字符"""
             # 转义常见的伪标签
             pseudo_tags = ['filename', 'path', 'url', 'script', 'style', 'div', 'span', 'img', 'a']
             for tag in pseudo_tags:
@@ -169,12 +162,33 @@ class CVEProcessor:
                 text = re.sub(f'</{tag}>', f'&lt;/{tag}&gt;', text, flags=re.IGNORECASE)
                 # 转义自闭合标签
                 text = re.sub(f'<{tag}/>', f'&lt;{tag}/&gt;', text, flags=re.IGNORECASE)
+            
+            # 转义其他裸露的<和>字符（但保护已转义的实体）
+            # 先保护已转义的实体
+            protected_entities = []
+            for entity in ['&lt;', '&gt;', '&amp;', '&quot;', '&apos;']:
+                while entity in text:
+                    placeholder = f"__PROTECTED_{len(protected_entities)}__"
+                    text = text.replace(entity, placeholder, 1)
+                    protected_entities.append((placeholder, entity))
+            
+            # 转义裸露的<和>字符
+            text = text.replace('<', '&lt;')
+            text = text.replace('>', '&gt;')
+            
+            # 恢复保护的实体
+            for placeholder, entity in protected_entities:
+                text = text.replace(placeholder, entity)
+            
             return text
         
-        # 只在vuln-descript标签内容中处理伪标签
-        content = re.sub(r'<vuln-descript>(.*?)</vuln-descript>', 
-                        lambda m: f'<vuln-descript>{fix_pseudo_tags(m.group(1))}</vuln-descript>', 
-                        content, flags=re.DOTALL)
+        # 只处理可能包含问题字符的标签内容
+        problem_tags = ['vuln-descript', 'name', 'vuln-solution']
+        for tag in problem_tags:
+            pattern = f'<{tag}>(.*?)</{tag}>'
+            content = re.sub(pattern, 
+                           lambda m: f'<{tag}>{fix_text_content(m.group(1))}</{tag}>', 
+                           content, flags=re.DOTALL)
         
         return content
     
