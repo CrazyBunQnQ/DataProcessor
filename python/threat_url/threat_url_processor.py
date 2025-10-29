@@ -22,7 +22,9 @@ class ThreatURLProcessor:
     def __init__(self):
         self.source_url = "https://myip.ms/files/blacklist/general/latest_blacklist.txt"
         self.base_url = "https://myip.ms/browse/blacklist"
-        self.output_file = "threat_urls.json"
+        # 生成带日期的输出文件名
+        current_date = datetime.now().strftime("%Y%m%d")
+        self.output_file = f"threat_urls_incremental_{current_date}.json"
         
     def fetch_blacklist_data(self):
         """
@@ -40,38 +42,7 @@ class ThreatURLProcessor:
             return response.text
         except requests.RequestException as e:
             print(f"获取数据失败: {e}")
-            print("使用示例数据进行测试...")
-            return self.get_sample_data()
-    
-    def get_sample_data(self):
-        """
-        返回示例数据用于测试
-        """
-        sample_data = """# on Wed, 29 Oct 2025 07:01:07 +0000 Last 10days Blacklist IPs
-###############################################################################
-# LIVE BLACKLIST IPv4/IPv6 ADDRESSES DATABASE
-# URL: https://myip.ms/browse/blacklist
-# Copyright 2025, Myip.ms
-#
-# General File Format: ..IPAddress.. # date(Y-M-D), host, countryID, blacklistID(from https://myip.ms/browse/scam)
-#
-###############################################################################
-#
-#  Myip.ms Blacklist IPs in this List: 833 ip (19 October 2025 - 29 October 2025)
-#
-
-185.26.173.9			 # 2025-10-19, 185.26.173.9, SRB, 1
-194.114.136.37			 # 2025-10-19, 194.114.136.37, VUT, 1
-157.10.172.134			 # 2025-10-19, 157.10.172.134, JPN, 1
-142.93.105.87			 # 2025-10-19, do-32.links.ls.007ac9.net, USA, 11
-176.31.139.2			 # 2025-10-19, proxy-fr004-san2.ahrefs.net, ESP, 12
-196.70.73.11			 # 2025-10-19, 196.70.73.11, MAR, 1
-94.23.188.221			 # 2025-10-20, proxy-fr008-san221.ahrefs.net, BEL, 12
-172.182.209.214			 # 2025-10-20, 172.182.209.214, DEU, 11
-20.171.207.89			 # 2025-10-20, 20.171.207.89, USA, 11
-104.248.168.241			 # 2025-10-20, 104.248.168.241, USA, 1
-1.1.166.56			 # 2015-01-12, 1.1.166.56, THA, 1002"""
-        return sample_data
+            return None
     
     def parse_date_to_timestamp(self, date_str):
         """
