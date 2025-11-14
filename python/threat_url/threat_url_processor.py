@@ -136,7 +136,7 @@ class ThreatURLProcessor:
             date_str = match.group(2).strip()
             hostname = match.group(3).strip()
             country_id = match.group(4).strip()
-            blacklist_type = int(match.group(5).strip())
+            blacklist_type = int(match.group(5).strip()) + 1000
             
             # 转换日期为时间戳
             publish_date = self.parse_date_to_timestamp(date_str)
@@ -163,7 +163,7 @@ class ThreatURLProcessor:
                         hostname = comment_parts[1].strip() if len(comment_parts) > 1 else ""
                         country_id = comment_parts[2].strip()
                         try:
-                            blacklist_type = int(comment_parts[3].strip())
+                            blacklist_type = int(comment_parts[3].strip()) + 1000
                             publish_date = self.parse_date_to_timestamp(date_str)
                             if publish_date is not None:
                                 return {
