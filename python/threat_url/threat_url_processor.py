@@ -13,6 +13,8 @@ from datetime import datetime
 import time
 import os
 import urllib3
+import zipfile
+import io
 
 # 禁用SSL警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -20,7 +22,9 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class ThreatURLProcessor:
     def __init__(self):
-        self.source_url = "https://myip.ms/files/blacklist/general/latest_blacklist.txt"
+        # 全量 https://myip.ms/files/blacklist/general/full_blacklist_database.zip
+        # 最新增量 https://myip.ms/files/blacklist/general/latest_blacklist.txt
+        self.source_url = "https://myip.ms/files/blacklist/general/full_blacklist_database.zip"
         self.base_url = "https://myip.ms/browse/blacklist"
         # 生成带日期的输出文件名
         current_date = datetime.now().strftime("%Y%m%d")
@@ -30,7 +34,7 @@ class ThreatURLProcessor:
         
     def fetch_blacklist_data(self):
         """
-        从源URL获取黑名单数据
+        从源URL获取黑名单数据；支持 ZIP 全量数据解压
         """
         try:
             print(f"正在从 {self.source_url} 获取数据...")
@@ -38,10 +42,35 @@ class ThreatURLProcessor:
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             }
-            response = requests.get(self.source_url, timeout=30, verify=False, headers=headers)
+            # 全量 ZIP 文件可能较大，适当增加超时
+            response = requests.get(self.source_url, timeout=120, verify=False, headers=headers)
             response.raise_for_status()
             print("数据获取成功")
-            return response.text
+
+            # 如果是ZIP文件，进行解压读取TXT
+            if self.source_url.lower().endswith('.zip'):
+                try:
+                    with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
+                        # 尝试找到第一个TXT文件
+                        txt_names = [n for n in zf.namelist() if n.lower().endswith('.txt')]
+                        if not txt_names:
+                            print("ZIP包内未找到TXT文件")
+                            return None
+                        target_name = txt_names[0]
+                        print(f"正在解压读取: {target_name}")
+                        with zf.open(target_name) as f:
+                            raw_bytes = f.read()
+                            try:
+                                return raw_bytes.decode('utf-8')
+                            except UnicodeDecodeError:
+                                # 兼容可能的编码差异
+                                return raw_bytes.decode('latin-1')
+                except zipfile.BadZipFile:
+                    print("ZIP文件格式错误，无法解压")
+                    return None
+            else:
+                # 非ZIP：直接返回文本内容
+                return response.text
         except requests.RequestException as e:
             print(f"获取数据失败: {e}")
             return None
