@@ -25,7 +25,7 @@ class ThreatURLProcessor:
         # 生成带日期的输出文件名
         current_date = datetime.now().strftime("%Y%m%d")
         self.output_file = f"threat_urls_incremental_{current_date}.json"
-        self.existing_data_file = "threat_urls.json"
+        self.existing_data_file = "SSAThreatURL.json"
         self.existing_data = {}  # 存储已有的完整数据记录，以IP为键
         
     def fetch_blacklist_data(self):
@@ -117,7 +117,8 @@ class ThreatURLProcessor:
             return {
                 "ip": ip,
                 "publishDate": publish_date,
-                "url": self.base_url,
+                # 使用解析到的主机名作为url；如果为空则回退到base_url
+                "url": hostname if hostname else ip,
                 "countryID": country_id,
                 "blacklistType": blacklist_type
             }
@@ -130,6 +131,7 @@ class ThreatURLProcessor:
                     comment_parts = parts[1].strip().split(',')
                     if len(comment_parts) >= 4:
                         date_str = comment_parts[0].strip()
+                        hostname = comment_parts[1].strip() if len(comment_parts) > 1 else ""
                         country_id = comment_parts[2].strip()
                         try:
                             blacklist_type = int(comment_parts[3].strip())
@@ -138,7 +140,8 @@ class ThreatURLProcessor:
                                 return {
                                     "ip": ip,
                                     "publishDate": publish_date,
-                                    "url": self.base_url,
+                                    # 使用解析到的主机名作为url；如果为空则回退到base_url
+                                    "url": hostname if hostname else ip,
                                     "countryID": country_id,
                                     "blacklistType": blacklist_type
                                 }
