@@ -80,7 +80,7 @@ public class GeoLite2Convert {
                 String name = tokens[1].trim();
                 String parentId = tokens[2].trim().isEmpty() || "\"\"".equals(tokens[2].trim()) ? "1814991" : (tokens[2].trim());
                 // 长度不足 12 则在前面用 0 补全
-                id = id.length() < 12 ? "0".repeat(12 - id.length()) + id : id;
+                // id = id.length() < 12 ? "0".repeat(12 - id.length()) + id : id;
                 parentId = !"1814991".equals(parentId) && parentId.length() < 12 ? "0".repeat(12 - parentId.length()) + parentId : parentId;
                 String lng = tokens[3].trim();
                 String lat = tokens[4].trim();
@@ -451,11 +451,11 @@ public class GeoLite2Convert {
                     geonameId = idRewriteMap.get(geonameId);
                 }
                 // 解析经纬度（与 convertToCityInfo 一致，格式化为两位小数）
-                String latitude = "0";
-                String longitude = "0";
+                String latitude = null;
+                String longitude = null;
                 try {
-                    latitude = String.format("%.2f", Double.parseDouble(values[7]));
-                    longitude = String.format("%.2f", Double.parseDouble(values[8]));
+                    latitude = Double.parseDouble(values[7]) + "";
+                    longitude = Double.parseDouble(values[8]) + "";
                 } catch (Exception ignored) {
                 }
 
