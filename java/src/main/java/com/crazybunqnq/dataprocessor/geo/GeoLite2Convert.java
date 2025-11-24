@@ -450,6 +450,15 @@ public class GeoLite2Convert {
                 if (idRewriteMap.containsKey(geonameId)) {
                     geonameId = idRewriteMap.get(geonameId);
                 }
+                // 解析经纬度（与 convertToCityInfo 一致，格式化为两位小数）
+                String latitude = "0";
+                String longitude = "0";
+                try {
+                    latitude = String.format("%.2f", Double.parseDouble(values[7]));
+                    longitude = String.format("%.2f", Double.parseDouble(values[8]));
+                } catch (Exception ignored) {
+                }
+
                 String[] ips = convertNetworkToIps(network);
                 if (ips == null) {
                     continue;
@@ -476,7 +485,7 @@ public class GeoLite2Convert {
                     String cleanedCityInfo = cleanJsonString(cityInfo);
                     String cleanedEnCityInfo = cleanJsonString(enCityInfo);
                     
-                    String result = "{\"city\":\"" + cleanedCityInfo + "\",\"enName\":\"" + cleanedEnCityInfo + "\",\"start_ip\":" + ips[0] + ",\"id\":\"" + id + "\",\"end_ip\":" + ips[1] + "}";
+                    String result = "{\"city\":\"" + cleanedCityInfo + "\",\"enName\":\"" + cleanedEnCityInfo + "\",\"start_ip\":" + ips[0] + ",\"id\":\"" + id + "\",\"end_ip\":" + ips[1] + ",\"latitude\":" + latitude + ",\"longitude\":" + longitude + "}";
                     fw.write(result + "\n");
                     id++;
                 } else {
