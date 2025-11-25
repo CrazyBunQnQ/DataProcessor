@@ -81,7 +81,7 @@ public class GeoLite2Convert {
                 String parentId = tokens[2].trim().isEmpty() || "\"\"".equals(tokens[2].trim()) ? "1814991" : (tokens[2].trim());
                 // 长度不足 12 则在前面用 0 补全
                 // id = id.length() < 12 ? "0".repeat(12 - id.length()) + id : id;
-                parentId = !"1814991".equals(parentId) && parentId.length() < 12 ? "0".repeat(12 - parentId.length()) + parentId : parentId;
+                // parentId = !"1814991".equals(parentId) && parentId.length() < 12 ? "0".repeat(12 - parentId.length()) + parentId : parentId;
                 String lng = tokens[3].trim();
                 String lat = tokens[4].trim();
 
@@ -303,8 +303,8 @@ public class GeoLite2Convert {
                 String latitude = "0";
                 String longitude = "0";
                 try {
-                    latitude = String.format("%.2f", Double.parseDouble(values[7]));
-                    longitude = String.format("%.2f", Double.parseDouble(values[8]));
+                    latitude = String.format("%.4f", Double.parseDouble(values[7]));
+                    longitude = String.format("%.4f", Double.parseDouble(values[8]));
                 } catch (Exception ignored) {
                 }
 
@@ -400,12 +400,12 @@ public class GeoLite2Convert {
 
                 String id = tokens[0].trim();
                 // 长度不足 12 则在前面用 0 补全
-                id = id.length() < 12 ? "0".repeat(12 - id.length()) + id : id;
+                // id = id.length() < 12 ? "0".repeat(12 - id.length()) + id : id;
                 String name = tokens[1].trim();
                 // name = renameLocation(name);
                 String parentId = tokens[2].trim().isEmpty() || "\"\"".equals(tokens[2].trim()) ? "1814991" : (tokens[2].trim());
                 // 长度不足 12 则在前面用 0 补全
-                parentId = !"1814991".equals(parentId) && parentId.length() < 12 ? "0".repeat(12 - parentId.length()) + parentId : parentId;
+                // parentId = !"1814991".equals(parentId) && parentId.length() < 12 ? "0".repeat(12 - parentId.length()) + parentId : parentId;
                 String lng = tokens[3].trim();
                 String lat = tokens[4].trim();
 
@@ -454,8 +454,8 @@ public class GeoLite2Convert {
                 String latitude = null;
                 String longitude = null;
                 try {
-                    latitude = Double.parseDouble(values[7]) + "";
-                    longitude = Double.parseDouble(values[8]) + "";
+                    latitude = String.format("%.4f", Double.parseDouble(values[7]));
+                    longitude = String.format("%.4f", Double.parseDouble(values[8]));
                 } catch (Exception ignored) {
                 }
 
