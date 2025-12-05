@@ -8,6 +8,11 @@ import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any
+try:
+    from tqdm import tqdm
+    HAS_TQDM = True
+except Exception:
+    HAS_TQDM = False
 proj_root = Path(__file__).resolve().parents[1]
 sys.path.append(str(proj_root))
 from openai_client import OpenAIClient, is_empty
@@ -41,9 +46,8 @@ def _validate(rec: Dict[str, Any]):
     except Exception:
         return False
 
-def _hash_key(kind: str, text: str, target: str = 'English'):
-    h = hashlib.sha256((kind + '|' + target + '|' + text).encode('utf-8')).hexdigest()
-    return kind + ':' + h
+def _make_key(kind: str, text: str):
+    return str(text)
 
 def load_translate_cache(cache_file: Path):
     cache = {}
@@ -56,7 +60,7 @@ def load_translate_cache(cache_file: Path):
                         continue
                     try:
                         item = json.loads(line)
-                        k = item.get('key')
+                        k = item.get('key') or item.get('source')
                         v = item.get('value')
                         if k and v is not None:
                             cache[k] = v
@@ -66,10 +70,10 @@ def load_translate_cache(cache_file: Path):
             pass
     return cache
 
-def append_translate_cache(cache_file: Path, key: str, value: str):
+def append_translate_cache(cache_file: Path, key: str, value: str, kind: str):
     try:
         with cache_file.open('a', encoding='utf-8') as f:
-            f.write(json.dumps({'key': key, 'value': value}, ensure_ascii=False) + '\n')
+            f.write(json.dumps({'key': key, 'value': value, 'kind': kind}, ensure_ascii=False) + '\n')
     except Exception:
         pass
 
@@ -130,6 +134,9 @@ def process_files(input_files: List[Path], output_file: Path, client: OpenAIClie
             print(f'读取失败: {p}')
             pass
     print(f'总记录数: {grand_total}')
+    pbar = None
+    if HAS_TQDM and grand_total > 0:
+        pbar = tqdm(total=grand_total, unit='it', dynamic_ncols=True)
     for p, data in all_data:
         print(f'开始处理: {p}')
         for rec in data:
@@ -139,51 +146,71 @@ def process_files(input_files: List[Path], output_file: Path, client: OpenAIClie
             if key in seen:
                 duplicates += 1
                 total += 1
-                print(_render_bar(total, grand_total, start_time), end='', flush=True)
+                if pbar:
+                    pbar.update(1)
+                    if total % (progress_interval * 5) == 0:
+                        pbar.set_postfix({'写入': completed, '重复': duplicates, '非法': invalid, '缓存': cached_hits, 'vDesc': f'{vd_translated}/{vd_attempt}', 'eTitle': f'{et_translated}/{et_attempt}'}, refresh=True)
+                else:
+                    if total % progress_interval == 0:
+                        print(_render_bar(total, grand_total, start_time), end='', flush=True)
                 continue
             seen.add(key)
             vd = _get(rec, 'vulnDescription', 'vuln_description')
             desc = rec.get('description')
             if is_empty(vd) and not is_empty(desc):
                 vd_attempt += 1
-                k1 = _hash_key('vulnDescription', str(desc))
+                k1 = _make_key('vulnDescription', str(desc))
                 if k1 in cache:
                     t = cache[k1]
                     cached_hits += 1
                 else:
                     t = client.translate(str(desc), 'English')
                 if debug:
-                    print(f'[vulnDescription] 原文: {str(desc)}')
-                    print(f'[vulnDescription] 结果: {str(t) if t else ""}')
+                    if pbar:
+                        pbar.write(f'[vulnDescription] 原文: {str(desc)}')
+                        pbar.write(f'[vulnDescription] 结果: {str(t) if t else ""}')
+                    else:
+                        print(f'[vulnDescription] 原文: {str(desc)}')
+                        print(f'[vulnDescription] 结果: {str(t) if t else ""}')
                 if t and not is_empty(t):
                     _set(rec, 'vulnDescription', 'vuln_description', t)
                     if cache_file and k1 not in cache:
                         cache[k1] = t
-                        append_translate_cache(cache_file, k1, t)
+                        append_translate_cache(cache_file, k1, t, 'vulnDescription')
                     vd_translated += 1
             et = _get(rec, 'enTitle', 'en_title')
             title = rec.get('title')
             if is_empty(et) and not is_empty(title):
                 et_attempt += 1
-                k2 = _hash_key('enTitle', str(title))
+                k2 = _make_key('enTitle', str(title))
                 if k2 in cache:
                     t2 = cache[k2]
                     cached_hits += 1
                 else:
                     t2 = client.translate(str(title), 'English')
                 if debug:
-                    print(f'[enTitle] 原文: {str(title)}')
-                    print(f'[enTitle] 结果: {str(t2) if t2 else ""}')
+                    if pbar:
+                        pbar.write(f'[enTitle] 原文: {str(title)}')
+                        pbar.write(f'[enTitle] 结果: {str(t2) if t2 else ""}')
+                    else:
+                        print(f'[enTitle] 原文: {str(title)}')
+                        print(f'[enTitle] 结果: {str(t2) if t2 else ""}')
                 if t2 and not is_empty(t2):
                     _set(rec, 'enTitle', 'en_title', t2)
                     if cache_file and k2 not in cache:
                         cache[k2] = t2
-                        append_translate_cache(cache_file, k2, t2)
+                        append_translate_cache(cache_file, k2, t2, 'enTitle')
                     et_translated += 1
             if not _validate(rec):
                 invalid += 1
                 total += 1
-                print(_render_bar(total, grand_total, start_time), end='', flush=True)
+                if pbar:
+                    pbar.update(1)
+                    if total % (progress_interval * 5) == 0:
+                        pbar.set_postfix({'写入': completed, '重复': duplicates, '非法': invalid, '缓存': cached_hits, 'vDesc': f'{vd_translated}/{vd_attempt}', 'eTitle': f'{et_translated}/{et_attempt}'}, refresh=True)
+                else:
+                    if total % progress_interval == 0:
+                        print(_render_bar(total, grand_total, start_time), end='', flush=True)
                 continue
             if first:
                 first = False
@@ -193,8 +220,18 @@ def process_files(input_files: List[Path], output_file: Path, client: OpenAIClie
             f.flush()
             completed += 1
             total += 1
-            print(_render_bar(total, grand_total, start_time), end='', flush=True)
+            if pbar:
+                pbar.update(1)
+                if total % progress_interval == 0:
+                    pbar.set_postfix({'写入': completed, '重复': duplicates, '非法': invalid, '缓存': cached_hits, 'vDesc': f'{vd_translated}/{vd_attempt}', 'eTitle': f'{et_translated}/{et_attempt}'}, refresh=True)
+            else:
+                if total % progress_interval == 0:
+                    print(_render_bar(total, grand_total, start_time), end='', flush=True)
     print()
+    if pbar:
+        pbar.close()
+    else:
+        print(_render_bar(grand_total, grand_total, start_time))
     f.write('\n]')
     f.flush()
     f.close()
