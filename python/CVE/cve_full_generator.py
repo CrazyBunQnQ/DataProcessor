@@ -46,6 +46,18 @@ def _validate(rec: Dict[str, Any]):
     except Exception:
         return False
 
+def contains_chinese(text: str):
+    try:
+        if not isinstance(text, str):
+            return False
+        for ch in text:
+            code = ord(ch)
+            if 0x4E00 <= code <= 0x9FFF or 0x3400 <= code <= 0x4DBF or 0x20000 <= code <= 0x2A6DF:
+                return True
+        return False
+    except Exception:
+        return False
+
 def _make_key(kind: str, text: str):
     return str(text)
 
@@ -155,7 +167,13 @@ def process_files(input_files: List[Path], output_file: Path, client: OpenAIClie
             seen.add(key)
             vd = _get(rec, 'vulnDescription', 'vuln_description')
             desc = rec.get('description')
-            if is_empty(vd) and not is_empty(desc):
+            need_vd_translate = False
+            if not is_empty(desc):
+                if is_empty(vd):
+                    need_vd_translate = True
+                elif isinstance(vd, str) and contains_chinese(vd):
+                    need_vd_translate = True
+            if need_vd_translate:
                 vd_attempt += 1
                 k1 = _make_key('vulnDescription', str(desc))
                 if k1 in cache:
