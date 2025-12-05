@@ -70,10 +70,10 @@ def load_translate_cache(cache_file: Path):
             pass
     return cache
 
-def append_translate_cache(cache_file: Path, key: str, value: str, kind: str):
+def append_translate_cache(cache_file: Path, key: str, value: str):
     try:
         with cache_file.open('a', encoding='utf-8') as f:
-            f.write(json.dumps({'key': key, 'value': value, 'kind': kind}, ensure_ascii=False) + '\n')
+            f.write(json.dumps({'key': key, 'value': value}, ensure_ascii=False) + '\n')
     except Exception:
         pass
 
@@ -148,8 +148,6 @@ def process_files(input_files: List[Path], output_file: Path, client: OpenAIClie
                 total += 1
                 if pbar:
                     pbar.update(1)
-                    if total % (progress_interval * 5) == 0:
-                        pbar.set_postfix({'写入': completed, '重复': duplicates, '非法': invalid, '缓存': cached_hits, 'vDesc': f'{vd_translated}/{vd_attempt}', 'eTitle': f'{et_translated}/{et_attempt}'}, refresh=True)
                 else:
                     if total % progress_interval == 0:
                         print(_render_bar(total, grand_total, start_time), end='', flush=True)
@@ -176,7 +174,7 @@ def process_files(input_files: List[Path], output_file: Path, client: OpenAIClie
                     _set(rec, 'vulnDescription', 'vuln_description', t)
                     if cache_file and k1 not in cache:
                         cache[k1] = t
-                        append_translate_cache(cache_file, k1, t, 'vulnDescription')
+                        append_translate_cache(cache_file, k1, t)
                     vd_translated += 1
             et = _get(rec, 'enTitle', 'en_title')
             title = rec.get('title')
@@ -199,7 +197,7 @@ def process_files(input_files: List[Path], output_file: Path, client: OpenAIClie
                     _set(rec, 'enTitle', 'en_title', t2)
                     if cache_file and k2 not in cache:
                         cache[k2] = t2
-                        append_translate_cache(cache_file, k2, t2, 'enTitle')
+                        append_translate_cache(cache_file, k2, t2)
                     et_translated += 1
             if not _validate(rec):
                 invalid += 1
@@ -222,8 +220,6 @@ def process_files(input_files: List[Path], output_file: Path, client: OpenAIClie
             total += 1
             if pbar:
                 pbar.update(1)
-                if total % progress_interval == 0:
-                    pbar.set_postfix({'写入': completed, '重复': duplicates, '非法': invalid, '缓存': cached_hits, 'vDesc': f'{vd_translated}/{vd_attempt}', 'eTitle': f'{et_translated}/{et_attempt}'}, refresh=True)
             else:
                 if total % progress_interval == 0:
                     print(_render_bar(total, grand_total, start_time), end='', flush=True)
@@ -247,7 +243,7 @@ def main():
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument('-o', '--output', required=False)
     parser.add_argument('--debug', default=False, action='store_true')
-    parser.add_argument('--progress-interval', type=int, default=1000)
+    parser.add_argument('--progress-interval', type=int, default=100)
     parser.add_argument('--cache-file', type=str, default=str((Path(__file__).resolve().parent / 'translate_cache.jsonl')))
     parser.add_argument('inputs', nargs='*')
     args = parser.parse_args()
