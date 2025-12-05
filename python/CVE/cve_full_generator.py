@@ -39,7 +39,7 @@ def _validate(rec: Dict[str, Any]):
     except Exception:
         return False
 
-def process_files(input_files: List[Path], output_file: Path, client: OpenAIClient):
+def process_files(input_files: List[Path], output_file: Path, client: OpenAIClient, progress_interval: int = 1000, debug: bool = False):
     seen = set()
     f = output_file.open('w', encoding='utf-8')
     f.write('[\n')
@@ -55,48 +55,74 @@ def process_files(input_files: List[Path], output_file: Path, client: OpenAIClie
     et_translated = 0
     if not client.api_key:
         print('未检测到 OPENAI_API_KEY，跳过翻译补全')
+    all_data = []
+    grand_total = 0
     for p in input_files:
         try:
             data = json.loads(p.read_text(encoding='utf-8'))
-            if not isinstance(data, list):
-                continue
-            for rec in data:
-                if not isinstance(rec, dict):
-                    continue
-                key = _unique_key(rec)
-                if key in seen:
-                    duplicates += 1
-                    continue
-                seen.add(key)
-                total += 1
-                vd = _get(rec, 'vulnDescription', 'vuln_description')
-                desc = rec.get('description')
-                if is_empty(vd) and not is_empty(desc):
-                    vd_attempt += 1
-                    t = client.translate(str(desc), 'English')
-                    if t and not is_empty(t):
-                        _set(rec, 'vulnDescription', 'vuln_description', t)
-                        vd_translated += 1
-                et = _get(rec, 'enTitle', 'en_title')
-                title = rec.get('title')
-                if is_empty(et) and not is_empty(title):
-                    et_attempt += 1
-                    t2 = client.translate(str(title), 'English')
-                    if t2 and not is_empty(t2):
-                        _set(rec, 'enTitle', 'en_title', t2)
-                        et_translated += 1
-                if not _validate(rec):
-                    invalid += 1
-                    continue
-                if first:
-                    first = False
-                else:
-                    f.write(',\n')
-                f.write(json.dumps(rec, ensure_ascii=False))
-                f.flush()
-                completed += 1
+            if isinstance(data, list):
+                all_data.append((p, data))
+                grand_total += len(data)
+                print(f'读取文件: {p}，记录数: {len(data)}')
         except Exception:
-            continue
+            print(f'读取失败: {p}')
+            pass
+    print(f'总记录数: {grand_total}')
+    for p, data in all_data:
+        print(f'开始处理: {p}')
+        for rec in data:
+            if not isinstance(rec, dict):
+                continue
+            key = _unique_key(rec)
+            if key in seen:
+                duplicates += 1
+                total += 1
+                if total % progress_interval == 0:
+                    pct = (total / grand_total * 100) if grand_total else 0
+                    print(f'进度 {total}/{grand_total} {pct:.2f}% 写入 {completed} 重复 {duplicates} 非法 {invalid} vulnDesc {vd_translated}/{vd_attempt} enTitle {et_translated}/{et_attempt}', end='\r', flush=True)
+                continue
+            seen.add(key)
+            vd = _get(rec, 'vulnDescription', 'vuln_description')
+            desc = rec.get('description')
+            if is_empty(vd) and not is_empty(desc):
+                vd_attempt += 1
+                t = client.translate(str(desc), 'English')
+                if debug:
+                    print(f'[vulnDescription] 原文: {str(desc)}')
+                    print(f'[vulnDescription] 结果: {str(t) if t else ""}')
+                if t and not is_empty(t):
+                    _set(rec, 'vulnDescription', 'vuln_description', t)
+                    vd_translated += 1
+            et = _get(rec, 'enTitle', 'en_title')
+            title = rec.get('title')
+            if is_empty(et) and not is_empty(title):
+                et_attempt += 1
+                t2 = client.translate(str(title), 'English')
+                if debug:
+                    print(f'[enTitle] 原文: {str(title)}')
+                    print(f'[enTitle] 结果: {str(t2) if t2 else ""}')
+                if t2 and not is_empty(t2):
+                    _set(rec, 'enTitle', 'en_title', t2)
+                    et_translated += 1
+            if not _validate(rec):
+                invalid += 1
+                total += 1
+                if total % progress_interval == 0:
+                    pct = (total / grand_total * 100) if grand_total else 0
+                    print(f'进度 {total}/{grand_total} {pct:.2f}% 写入 {completed} 重复 {duplicates} 非法 {invalid} vulnDesc {vd_translated}/{vd_attempt} enTitle {et_translated}/{et_attempt}', end='\r', flush=True)
+                continue
+            if first:
+                first = False
+            else:
+                f.write(',\n')
+            f.write(json.dumps(rec, ensure_ascii=False))
+            f.flush()
+            completed += 1
+            total += 1
+            if total % progress_interval == 0:
+                pct = (total / grand_total * 100) if grand_total else 0
+                print(f'进度 {total}/{grand_total} {pct:.2f}% 写入 {completed} 重复 {duplicates} 非法 {invalid} vulnDesc {vd_translated}/{vd_attempt} enTitle {et_translated}/{et_attempt}', end='\r', flush=True)
+    print()
     f.write('\n]')
     f.flush()
     f.close()
@@ -110,6 +136,8 @@ def process_files(input_files: List[Path], output_file: Path, client: OpenAIClie
 def main():
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument('-o', '--output', required=False)
+    parser.add_argument('--debug', default=True, action='store_true')
+    parser.add_argument('--progress-interval', type=int, default=1000)
     parser.add_argument('inputs', nargs='*')
     args = parser.parse_args()
     inputs = [Path(x) for x in args.inputs if x]
@@ -125,7 +153,7 @@ def main():
     else:
         out = Path(__file__).resolve().parent / f'CVE_full_{datetime.now().strftime("%Y%m%d")}.json'
     client = OpenAIClient()
-    process_files(inputs, out, client)
+    process_files(inputs, out, client, progress_interval=args.progress_interval, debug=args.debug)
 
 if __name__ == '__main__':
     main()
