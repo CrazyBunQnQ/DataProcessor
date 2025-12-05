@@ -194,6 +194,12 @@ def process_files(input_files: List[Path], output_file: Path, client: OpenAIClie
                         cache[k1] = t
                         append_translate_cache(cache_file, k1, t)
                     vd_translated += 1
+            else:
+                if cache_file and not is_empty(desc) and not is_empty(vd):
+                    k1 = _make_key('vulnDescription', str(desc))
+                    if k1 not in cache:
+                        cache[k1] = vd
+                        append_translate_cache(cache_file, k1, vd)
             et = _get(rec, 'enTitle', 'en_title')
             title = rec.get('title')
             if is_empty(et) and not is_empty(title):
@@ -217,6 +223,12 @@ def process_files(input_files: List[Path], output_file: Path, client: OpenAIClie
                         cache[k2] = t2
                         append_translate_cache(cache_file, k2, t2)
                     et_translated += 1
+            else:
+                if cache_file and not is_empty(title) and not is_empty(et):
+                    k2 = _make_key('enTitle', str(title))
+                    if k2 not in cache:
+                        cache[k2] = et
+                        append_translate_cache(cache_file, k2, et)
             if not _validate(rec):
                 invalid += 1
                 total += 1
