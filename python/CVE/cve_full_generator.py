@@ -3,6 +3,8 @@ import sys
 import json
 import atexit
 import argparse
+import time
+import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any
@@ -39,7 +41,39 @@ def _validate(rec: Dict[str, Any]):
     except Exception:
         return False
 
-def process_files(input_files: List[Path], output_file: Path, client: OpenAIClient, progress_interval: int = 1000, debug: bool = False):
+def _hash_key(kind: str, text: str, target: str = 'English'):
+    h = hashlib.sha256((kind + '|' + target + '|' + text).encode('utf-8')).hexdigest()
+    return kind + ':' + h
+
+def load_translate_cache(cache_file: Path):
+    cache = {}
+    if cache_file and cache_file.exists():
+        try:
+            with cache_file.open('r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        item = json.loads(line)
+                        k = item.get('key')
+                        v = item.get('value')
+                        if k and v is not None:
+                            cache[k] = v
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+    return cache
+
+def append_translate_cache(cache_file: Path, key: str, value: str):
+    try:
+        with cache_file.open('a', encoding='utf-8') as f:
+            f.write(json.dumps({'key': key, 'value': value}, ensure_ascii=False) + '\n')
+    except Exception:
+        pass
+
+def process_files(input_files: List[Path], output_file: Path, client: OpenAIClient, progress_interval: int = 1000, debug: bool = False, cache_file: Path = None):
     seen = set()
     f = output_file.open('w', encoding='utf-8')
     f.write('[\n')
@@ -53,10 +87,15 @@ def process_files(input_files: List[Path], output_file: Path, client: OpenAIClie
     vd_translated = 0
     et_attempt = 0
     et_translated = 0
+    cached_hits = 0
     if not client.api_key:
         print('未检测到 OPENAI_API_KEY，跳过翻译补全')
     all_data = []
     grand_total = 0
+    start_time = time.time()
+    cache = load_translate_cache(cache_file) if cache_file else {}
+    if cache_file:
+        print(f'已加载翻译缓存: {len(cache)}')
     for p in input_files:
         try:
             data = json.loads(p.read_text(encoding='utf-8'))
@@ -78,38 +117,66 @@ def process_files(input_files: List[Path], output_file: Path, client: OpenAIClie
                 duplicates += 1
                 total += 1
                 if total % progress_interval == 0:
+                    elapsed = max(time.time() - start_time, 1e-6)
+                    speed = total / elapsed
                     pct = (total / grand_total * 100) if grand_total else 0
-                    print(f'进度 {total}/{grand_total} {pct:.2f}% 写入 {completed} 重复 {duplicates} 非法 {invalid} vulnDesc {vd_translated}/{vd_attempt} enTitle {et_translated}/{et_attempt}', end='\r', flush=True)
+                    remain = max(grand_total - total, 0)
+                    eta_sec = int(remain / speed) if speed > 0 else 0
+                    eta_min = eta_sec // 60
+                    eta_s = eta_sec % 60
+                    print(f'进度 {total}/{grand_total} {pct:.2f}% 速度 {speed:.2f}/s ETA {eta_min:02d}:{eta_s:02d} 写入 {completed} 重复 {duplicates} 非法 {invalid} 缓存命中 {cached_hits} vulnDesc {vd_translated}/{vd_attempt} enTitle {et_translated}/{et_attempt}', end='\r', flush=True)
                 continue
             seen.add(key)
             vd = _get(rec, 'vulnDescription', 'vuln_description')
             desc = rec.get('description')
             if is_empty(vd) and not is_empty(desc):
                 vd_attempt += 1
-                t = client.translate(str(desc), 'English')
+                k1 = _hash_key('vulnDescription', str(desc))
+                if k1 in cache:
+                    t = cache[k1]
+                    cached_hits += 1
+                else:
+                    t = client.translate(str(desc), 'English')
                 if debug:
                     print(f'[vulnDescription] 原文: {str(desc)}')
                     print(f'[vulnDescription] 结果: {str(t) if t else ""}')
                 if t and not is_empty(t):
                     _set(rec, 'vulnDescription', 'vuln_description', t)
+                    if cache_file and k1 not in cache:
+                        cache[k1] = t
+                        append_translate_cache(cache_file, k1, t)
                     vd_translated += 1
             et = _get(rec, 'enTitle', 'en_title')
             title = rec.get('title')
             if is_empty(et) and not is_empty(title):
                 et_attempt += 1
-                t2 = client.translate(str(title), 'English')
+                k2 = _hash_key('enTitle', str(title))
+                if k2 in cache:
+                    t2 = cache[k2]
+                    cached_hits += 1
+                else:
+                    t2 = client.translate(str(title), 'English')
                 if debug:
                     print(f'[enTitle] 原文: {str(title)}')
                     print(f'[enTitle] 结果: {str(t2) if t2 else ""}')
                 if t2 and not is_empty(t2):
                     _set(rec, 'enTitle', 'en_title', t2)
+                    if cache_file and k2 not in cache:
+                        cache[k2] = t2
+                        append_translate_cache(cache_file, k2, t2)
                     et_translated += 1
             if not _validate(rec):
                 invalid += 1
                 total += 1
                 if total % progress_interval == 0:
+                    elapsed = max(time.time() - start_time, 1e-6)
+                    speed = total / elapsed
                     pct = (total / grand_total * 100) if grand_total else 0
-                    print(f'进度 {total}/{grand_total} {pct:.2f}% 写入 {completed} 重复 {duplicates} 非法 {invalid} vulnDesc {vd_translated}/{vd_attempt} enTitle {et_translated}/{et_attempt}', end='\r', flush=True)
+                    remain = max(grand_total - total, 0)
+                    eta_sec = int(remain / speed) if speed > 0 else 0
+                    eta_min = eta_sec // 60
+                    eta_s = eta_sec % 60
+                    print(f'进度 {total}/{grand_total} {pct:.2f}% 速度 {speed:.2f}/s ETA {eta_min:02d}:{eta_s:02d} 写入 {completed} 重复 {duplicates} 非法 {invalid} 缓存命中 {cached_hits} vulnDesc {vd_translated}/{vd_attempt} enTitle {et_translated}/{et_attempt}', end='\r', flush=True)
                 continue
             if first:
                 first = False
@@ -120,8 +187,14 @@ def process_files(input_files: List[Path], output_file: Path, client: OpenAIClie
             completed += 1
             total += 1
             if total % progress_interval == 0:
+                elapsed = max(time.time() - start_time, 1e-6)
+                speed = total / elapsed
                 pct = (total / grand_total * 100) if grand_total else 0
-                print(f'进度 {total}/{grand_total} {pct:.2f}% 写入 {completed} 重复 {duplicates} 非法 {invalid} vulnDesc {vd_translated}/{vd_attempt} enTitle {et_translated}/{et_attempt}', end='\r', flush=True)
+                remain = max(grand_total - total, 0)
+                eta_sec = int(remain / speed) if speed > 0 else 0
+                eta_min = eta_sec // 60
+                eta_s = eta_sec % 60
+                print(f'进度 {total}/{grand_total} {pct:.2f}% 速度 {speed:.2f}/s ETA {eta_min:02d}:{eta_s:02d} 写入 {completed} 重复 {duplicates} 非法 {invalid} 缓存命中 {cached_hits} vulnDesc {vd_translated}/{vd_attempt} enTitle {et_translated}/{et_attempt}', end='\r', flush=True)
     print()
     f.write('\n]')
     f.flush()
@@ -132,12 +205,14 @@ def process_files(input_files: List[Path], output_file: Path, client: OpenAIClie
     print(f'非法记录: {invalid}')
     print(f'vulnDescription 待翻译: {vd_attempt}, 已翻译: {vd_translated}')
     print(f'enTitle 待翻译: {et_attempt}, 已翻译: {et_translated}')
+    print(f'缓存命中: {cached_hits}')
 
 def main():
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument('-o', '--output', required=False)
-    parser.add_argument('--debug', default=True, action='store_true')
+    parser.add_argument('--debug', default=False, action='store_true')
     parser.add_argument('--progress-interval', type=int, default=1000)
+    parser.add_argument('--cache-file', type=str, default=str((Path(__file__).resolve().parent / 'translate_cache.jsonl')))
     parser.add_argument('inputs', nargs='*')
     args = parser.parse_args()
     inputs = [Path(x) for x in args.inputs if x]
@@ -153,7 +228,8 @@ def main():
     else:
         out = Path(__file__).resolve().parent / f'CVE_full_{datetime.now().strftime("%Y%m%d")}.json'
     client = OpenAIClient()
-    process_files(inputs, out, client, progress_interval=args.progress_interval, debug=args.debug)
+    cache_path = Path(args.cache_file) if args.cache_file else None
+    process_files(inputs, out, client, progress_interval=args.progress_interval, debug=args.debug, cache_file=cache_path)
 
 if __name__ == '__main__':
     main()
