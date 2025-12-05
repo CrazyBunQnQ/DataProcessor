@@ -73,6 +73,29 @@ def append_translate_cache(cache_file: Path, key: str, value: str):
     except Exception:
         pass
 
+def _fmt_time(sec: float):
+    sec = int(max(sec, 0))
+    h = sec // 3600
+    m = (sec % 3600) // 60
+    s = sec % 60
+    if h > 0:
+        return f"{h:02d}:{m:02d}:{s:02d}"
+    return f"{m:02d}:{s:02d}"
+
+def _render_bar(current: int, total: int, start_time: float):
+    elapsed = max(time.time() - start_time, 1e-6)
+    rate = current / elapsed
+    remain = max(total - current, 0)
+    eta_sec = int(remain / rate) if rate > 0 else 0
+    elapsed_fmt = _fmt_time(elapsed)
+    eta_fmt = _fmt_time(eta_sec)
+    pct = (current / total) if total else 0
+    pct_text = f"{int(pct*100):3d}%"
+    width = 100
+    filled = int(pct * width)
+    bar = '█' * filled + ' ' * (width - filled)
+    return f"\r{pct_text}|{bar}| {current}/{total} [{elapsed_fmt}<{eta_fmt}, {rate:.2f}it/s]"
+
 def process_files(input_files: List[Path], output_file: Path, client: OpenAIClient, progress_interval: int = 1000, debug: bool = False, cache_file: Path = None):
     seen = set()
     f = output_file.open('w', encoding='utf-8')
@@ -116,15 +139,7 @@ def process_files(input_files: List[Path], output_file: Path, client: OpenAIClie
             if key in seen:
                 duplicates += 1
                 total += 1
-                if total % progress_interval == 0:
-                    elapsed = max(time.time() - start_time, 1e-6)
-                    speed = total / elapsed
-                    pct = (total / grand_total * 100) if grand_total else 0
-                    remain = max(grand_total - total, 0)
-                    eta_sec = int(remain / speed) if speed > 0 else 0
-                    eta_min = eta_sec // 60
-                    eta_s = eta_sec % 60
-                    print(f'进度 {total}/{grand_total} {pct:.2f}% 速度 {speed:.2f}/s ETA {eta_min:02d}:{eta_s:02d} 写入 {completed} 重复 {duplicates} 非法 {invalid} 缓存命中 {cached_hits} vulnDesc {vd_translated}/{vd_attempt} enTitle {et_translated}/{et_attempt}', end='\r', flush=True)
+                print(_render_bar(total, grand_total, start_time), end='', flush=True)
                 continue
             seen.add(key)
             vd = _get(rec, 'vulnDescription', 'vuln_description')
@@ -168,15 +183,7 @@ def process_files(input_files: List[Path], output_file: Path, client: OpenAIClie
             if not _validate(rec):
                 invalid += 1
                 total += 1
-                if total % progress_interval == 0:
-                    elapsed = max(time.time() - start_time, 1e-6)
-                    speed = total / elapsed
-                    pct = (total / grand_total * 100) if grand_total else 0
-                    remain = max(grand_total - total, 0)
-                    eta_sec = int(remain / speed) if speed > 0 else 0
-                    eta_min = eta_sec // 60
-                    eta_s = eta_sec % 60
-                    print(f'进度 {total}/{grand_total} {pct:.2f}% 速度 {speed:.2f}/s ETA {eta_min:02d}:{eta_s:02d} 写入 {completed} 重复 {duplicates} 非法 {invalid} 缓存命中 {cached_hits} vulnDesc {vd_translated}/{vd_attempt} enTitle {et_translated}/{et_attempt}', end='\r', flush=True)
+                print(_render_bar(total, grand_total, start_time), end='', flush=True)
                 continue
             if first:
                 first = False
@@ -186,15 +193,7 @@ def process_files(input_files: List[Path], output_file: Path, client: OpenAIClie
             f.flush()
             completed += 1
             total += 1
-            if total % progress_interval == 0:
-                elapsed = max(time.time() - start_time, 1e-6)
-                speed = total / elapsed
-                pct = (total / grand_total * 100) if grand_total else 0
-                remain = max(grand_total - total, 0)
-                eta_sec = int(remain / speed) if speed > 0 else 0
-                eta_min = eta_sec // 60
-                eta_s = eta_sec % 60
-                print(f'进度 {total}/{grand_total} {pct:.2f}% 速度 {speed:.2f}/s ETA {eta_min:02d}:{eta_s:02d} 写入 {completed} 重复 {duplicates} 非法 {invalid} 缓存命中 {cached_hits} vulnDesc {vd_translated}/{vd_attempt} enTitle {et_translated}/{et_attempt}', end='\r', flush=True)
+            print(_render_bar(total, grand_total, start_time), end='', flush=True)
     print()
     f.write('\n]')
     f.flush()
