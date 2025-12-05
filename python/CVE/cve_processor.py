@@ -106,9 +106,9 @@ class CVEProcessor:
         """
         cve_list = []
         
-        # 提取文件名中的月份信息用于排序
+        # 提取文件名中的年份信息用于排序
         filename = os.path.basename(xml_file)
-        month_info = self._extract_month_from_filename(filename)
+        year_info = self._extract_year_from_filename(filename)
         
         try:
             # 先读取文件内容并进行预处理
@@ -122,14 +122,14 @@ class CVEProcessor:
             root = ET.fromstring(content)
             
             for entry in root.findall('entry'):
-                cve_data = self._parse_entry(entry, month_info)
+                cve_data = self._parse_entry(entry, year_info)
                 if cve_data:
                     cve_list.append(cve_data)
                     
         except ET.ParseError as e:
             print(f"解析XML文件 {xml_file} 时出错: {e}")
             # 尝试逐个entry解析
-            cve_list = self._parse_xml_by_entries(xml_file, month_info)
+            cve_list = self._parse_xml_by_entries(xml_file, year_info)
         except Exception as e:
             print(f"处理文件 {xml_file} 时出错: {e}")
             
@@ -192,13 +192,13 @@ class CVEProcessor:
         
         return content
     
-    def _parse_xml_by_entries(self, xml_file: str, month_info: str) -> List[Dict]:
+    def _parse_xml_by_entries(self, xml_file: str, year_info: int) -> List[Dict]:
         """
         逐个entry解析XML文件（当整体解析失败时使用）
         
         Args:
             xml_file: XML文件路径
-            month_info: 月份信息
+            year_info: 年份信息
             
         Returns:
             解析后的CVE数据列表
@@ -224,7 +224,7 @@ class CVEProcessor:
                     
                     # 解析单个entry
                     entry_root = ET.fromstring(entry_xml)
-                    cve_data = self._parse_entry(entry_root, month_info)
+                    cve_data = self._parse_entry(entry_root, year_info)
                     if cve_data:
                         cve_list.append(cve_data)
                         
@@ -237,36 +237,31 @@ class CVEProcessor:
             
         return cve_list
     
-    def _extract_month_from_filename(self, filename: str) -> str:
+    def _extract_year_from_filename(self, filename: str) -> int:
         """
-        从文件名中提取月份信息
+        从文件名中提取年份信息
         
         Args:
             filename: 文件名
             
         Returns:
-            月份信息字符串
+            年份（整数），未识别返回0
         """
-        if filename.startswith("当月"):
-            return "当月"
-        elif filename.startswith("9月"):
-            return "9月"
-        elif filename.startswith("8月"):
-            return "8月"
-        else:
-            # 尝试从文件名中提取月份
-            month_match = re.search(r'(\d+月)', filename)
-            if month_match:
-                return month_match.group(1)
-            return "未知"
+        year_match = re.search(r'(\d{4})年', filename)
+        if year_match:
+            try:
+                return int(year_match.group(1))
+            except ValueError:
+                pass
+        return 0
     
-    def _parse_entry(self, entry: ET.Element, month_info: str) -> Optional[Dict]:
+    def _parse_entry(self, entry: ET.Element, year_info: int) -> Optional[Dict]:
         """
         解析单个entry元素
         
         Args:
             entry: XML entry元素
-            month_info: 月份信息
+            year_info: 年份信息
             
         Returns:
             解析后的CVE数据字典
@@ -328,7 +323,7 @@ class CVEProcessor:
                 "deleted": None,
                 
                 # 添加内部字段用于去重判断
-                "_month_info": month_info,
+                "_year_info": year_info,
                 "_modified": self._get_text(entry, 'modified')
             }
             
@@ -411,12 +406,8 @@ class CVEProcessor:
             if filename.endswith('.xml'):
                 xml_files.append(os.path.join(self.data_dir, filename))
         
-        # 按文件名排序，确保当月文件最后处理（优先级最高）
-        xml_files.sort(key=lambda x: (
-            0 if "当月" in os.path.basename(x) else 
-            1 if "9月" in os.path.basename(x) else 
-            2 if "8月" in os.path.basename(x) else 3
-        ), reverse=True)
+        # 按年份升序排序，确保最新年份最后处理（优先级最高）
+        xml_files.sort(key=lambda x: self._extract_year_from_filename(os.path.basename(x)))
         
         print(f"找到 {len(xml_files)} 个XML文件:")
         for file in xml_files:
@@ -433,7 +424,7 @@ class CVEProcessor:
             file_new_count = 0
             file_skipped_count = 0
             
-            # 合并数据，实现去重（以最新月份为准）
+            # 合并数据，实现去重（以最新年份为准）
             for cve_data in cve_list:
                 cve_id = cve_data.get('cve')
                 if cve_id:
@@ -487,23 +478,16 @@ class CVEProcessor:
         Returns:
             是否应该更新
         """
-        # 月份优先级：当月 > 9月 > 8月 > 其他
-        priority_map = {
-            "当月": 4,
-            "9月": 3,
-            "8月": 2
-        }
+        existing_year = existing.get('_year_info', 0) or 0
+        new_year = new.get('_year_info', 0) or 0
         
-        existing_priority = priority_map.get(existing.get('_month_info', ''), 1)
-        new_priority = priority_map.get(new.get('_month_info', ''), 1)
-        
-        if new_priority > existing_priority:
+        if new_year > existing_year:
             return True
-        elif new_priority == existing_priority:
-            # 同一月份，比较修改时间
+        elif new_year == existing_year:
+            # 同一年份，比较修改时间
             existing_modified = existing.get('_modified', '')
             new_modified = new.get('_modified', '')
-            return new_modified > existing_modified
+            return (new_modified or '') > (existing_modified or '')
         
         return False
     
@@ -548,7 +532,7 @@ class CVEProcessor:
 def main():
     """主函数"""
     # 现有数据文件路径
-    existing_data_file = r"E:\LaProjects\2.15\Singularity\framework\framework\src\main\resources\resources\knowledgeBase\CVE.json"
+    existing_data_file = r"E:\LaProjects\dev\Singularity\framework\framework\src\main\resources\resources\knowledgeBase\CVE.json"
     
     # 创建处理器，指定现有数据文件
     processor = CVEProcessor(existing_data_file=existing_data_file)
