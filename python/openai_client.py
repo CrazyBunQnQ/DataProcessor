@@ -47,7 +47,7 @@ class OpenAIClient:
         payload = {
             'model': self.model,
             'messages': [
-                {'role': 'system', 'content': f'Translate the user content to {target_lang}. Return only the translation.'},
+                {'role': 'system', 'content': f'Translate the content posted by the user into {target_lang} and keep the original format. Only return the translation result without any additional instructions or styles.'},
                 {'role': 'user', 'content': text}
             ],
             'temperature': 0

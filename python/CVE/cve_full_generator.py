@@ -82,10 +82,10 @@ def load_translate_cache(cache_file: Path):
             pass
     return cache
 
-def append_translate_cache(cache_file: Path, key: str, value: str):
+def append_translate_cache(cache_file: Path, key: str, value: str, kind: str):
     try:
         with cache_file.open('a', encoding='utf-8') as f:
-            f.write(json.dumps({'key': key, 'value': value}, ensure_ascii=False) + '\n')
+            f.write(json.dumps({'key': key, 'value': value, 'kind': kind}, ensure_ascii=False) + '\n')
     except Exception:
         pass
 
@@ -192,14 +192,14 @@ def process_files(input_files: List[Path], output_file: Path, client: OpenAIClie
                     _set(rec, 'vulnDescription', 'vuln_description', t)
                     if cache_file and k1 not in cache:
                         cache[k1] = t
-                        append_translate_cache(cache_file, k1, t)
+                        append_translate_cache(cache_file, k1, t, 'vulnDescription')
                     vd_translated += 1
             else:
                 if cache_file and not is_empty(desc) and not is_empty(vd):
                     k1 = _make_key('vulnDescription', str(desc))
                     if k1 not in cache:
                         cache[k1] = vd
-                        append_translate_cache(cache_file, k1, vd)
+                        append_translate_cache(cache_file, k1, vd, 'vulnDescription')
             et = _get(rec, 'enTitle', 'en_title')
             title = rec.get('title')
             if is_empty(et) and not is_empty(title):
@@ -221,14 +221,14 @@ def process_files(input_files: List[Path], output_file: Path, client: OpenAIClie
                     _set(rec, 'enTitle', 'en_title', t2)
                     if cache_file and k2 not in cache:
                         cache[k2] = t2
-                        append_translate_cache(cache_file, k2, t2)
+                        append_translate_cache(cache_file, k2, t2, 'enTitle')
                     et_translated += 1
             else:
                 if cache_file and not is_empty(title) and not is_empty(et):
                     k2 = _make_key('enTitle', str(title))
                     if k2 not in cache:
                         cache[k2] = et
-                        append_translate_cache(cache_file, k2, et)
+                        append_translate_cache(cache_file, k2, et, 'enTitle')
             if not _validate(rec):
                 invalid += 1
                 total += 1
