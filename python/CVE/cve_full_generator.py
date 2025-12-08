@@ -15,7 +15,8 @@ except Exception:
     HAS_TQDM = False
 proj_root = Path(__file__).resolve().parents[1]
 sys.path.append(str(proj_root))
-from openai_client import OpenAIClient, is_empty
+from translation_client import TranslationClient
+from openai_client import is_empty
 
 def _norm_key(record: Dict[str, Any], camel: str, snake: str):
     if camel in record:
@@ -112,7 +113,7 @@ def _render_bar(current: int, total: int, start_time: float):
     bar = '█' * filled + ' ' * (width - filled)
     return f"\r{pct_text}|{bar}| {current}/{total} [{elapsed_fmt}<{eta_fmt}, {rate:.2f}it/s]"
 
-def process_files(input_files: List[Path], output_file: Path, client: OpenAIClient, progress_interval: int = 1000, debug: bool = False, cache_file: Path = None):
+def process_files(input_files: List[Path], output_file: Path, client: TranslationClient, progress_interval: int = 1000, debug: bool = False, cache_file: Path = None):
     seen = set()
     f = output_file.open('w', encoding='utf-8')
     f.write('[\n')
@@ -127,8 +128,8 @@ def process_files(input_files: List[Path], output_file: Path, client: OpenAIClie
     et_attempt = 0
     et_translated = 0
     cached_hits = 0
-    if not client.api_key:
-        print('未检测到 OPENAI_API_KEY，跳过翻译补全')
+    if not client.can_translate():
+        print('未检测到翻译配置，跳过翻译补全')
     all_data = []
     grand_total = 0
     start_time = time.time()
@@ -289,7 +290,7 @@ def main():
         out = Path(args.output)
     else:
         out = Path(__file__).resolve().parent / f'CVE_full_{datetime.now().strftime("%Y%m%d")}.json'
-    client = OpenAIClient()
+    client = TranslationClient()
     cache_path = Path(args.cache_file) if args.cache_file else None
     process_files(inputs, out, client, progress_interval=args.progress_interval, debug=args.debug, cache_file=cache_path)
 
