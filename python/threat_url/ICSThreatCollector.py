@@ -206,7 +206,6 @@ class ICSThreatCollector:
                 ('URLhaus', 'https://urlhaus-api.abuse.ch/v1/payloads/', '恶意软件分发URL'),
                 ('FeodoTracker', 'https://feodotracker.abuse.ch/downloads/ipblocklist.json', '僵尸网络C2服务器'),
                 ('OpenPhish', 'https://openphish.com/feed.txt', '钓鱼网站URL'),
-                ('PhishTank', 'https://data.phishtank.com/data/online-valid.json', '社区验证钓鱼URL'),
                 ('MalwareBazaar', 'https://mb-api.abuse.ch/api/v1/', '恶意软件样本数据库'),
                 ('Blocklist', 'https://lists.blocklist.de/lists/all.txt', '综合攻击IP列表'),
                 ('CINS Army', 'http://cinsscore.com/list/ci-badguys.txt', '恶意IP评分列表'),
@@ -593,7 +592,7 @@ class ICSThreatCollector:
     
     def fetch_abuseipdb_fixed(self, max_results: int = 100) -> int:
         """
-        从AbuseIPDB获取威胁IP（改进版）
+        从AbuseIPDB获取威胁IP
         
         Args:
             max_results: 最大返回结果数
@@ -659,7 +658,7 @@ class ICSThreatCollector:
     
     def fetch_urlhaus_fixed(self, limit: int = 50) -> int:
         """
-        从URLhaus获取威胁URL（改进版）
+        从URLhaus获取威胁URL
         
         Args:
             limit: 限制返回数量
@@ -673,8 +672,12 @@ class ICSThreatCollector:
         try:
             # URLhaus API（不需要密钥）
             url = "https://urlhaus-api.abuse.ch/v1/payloads/recent/"
+
+            headers = {
+                'Auth-Key': ''  # 在此处直接替换为你的密钥[citation:1]
+            }
             
-            response = self._safe_request(url)
+            response = self._safe_request(url, headers=headers)
             
             if response:
                 data = response.json()
@@ -722,7 +725,7 @@ class ICSThreatCollector:
     
     def fetch_openphish_fixed(self) -> int:
         """
-        从OpenPhish获取钓鱼URL（改进版）
+        从OpenPhish获取钓鱼URL
         
         Returns:
             int: 收集到的项目数
@@ -781,76 +784,6 @@ class ICSThreatCollector:
             self.stats['errors'] += 1
             return 0
     
-    def fetch_phishing_database(self) -> int:
-        """
-        从PhishTank获取钓鱼URL
-        
-        Returns:
-            int: 收集到的项目数
-        """
-        start_time = time.time()
-        collected = 0
-        
-        try:
-            # PhishTank提供社区验证的钓鱼URL
-            url = "https://data.phishtank.com/data/online-valid.json"
-            
-            response = self._safe_request(url, stream=True)
-            
-            if response:
-                # PhishTank返回的是JSON行格式
-                for line in response.iter_lines():
-                    if not line:
-                        continue
-                    
-                    try:
-                        item = json.loads(line)
-                        url_str = item.get('url', '')
-                        if not url_str:
-                            continue
-                        
-                        # 检查是否与工控相关
-                        url_lower = url_str.lower()
-                        is_ics_related = any(
-                            keyword in url_lower 
-                            for keyword in ['siemens', 'rockwell', 'schneider', 
-                                          'scada', 'plc', 'hmi', 'industrial']
-                        ) or any(
-                            keyword in str(item.get('target', '')).lower()
-                            for keyword in self.ics_keywords
-                        )
-                        
-                        url_data = {
-                            'url': url_str,
-                            'threat_type': 'phishing',
-                            'source': 'PhishTank',
-                            'confidence_score': 90 if item.get('verified', False) else 60,
-                            'description': f"Target: {item.get('target', 'unknown')}",
-                            'tags': f"phishing,{item.get('phish_detail_url', '')}",
-                            'last_seen': item.get('submission_time', datetime.now().isoformat()),
-                            'is_ics_related': is_ics_related
-                        }
-                        
-                        if self._add_threat_url(url_data):
-                            collected += 1
-                            
-                    except json.JSONDecodeError:
-                        continue
-            
-            duration = time.time() - start_time
-            self._record_collection('PhishTank', 'threat_url', collected, 0, 
-                                   duration, True)
-            
-            logger.info(f"从PhishTank收集到 {collected} 个钓鱼URL")
-            return collected
-            
-        except Exception as e:
-            duration = time.time() - start_time
-            self._record_collection('PhishTank', 'threat_url', 0, 0, 
-                                   duration, False, str(e))
-            logger.error(f"从PhishTank收集失败: {str(e)}")
-            self.stats['errors'] += 1
-            return 0
     
     def fetch_malwarebazaar(self) -> int:
         """
@@ -865,6 +798,11 @@ class ICSThreatCollector:
         try:
             # MalwareBazaar API
             url = "https://mb-api.abuse.ch/api/v1/"
+
+            # 设置认证头部
+            headers = {
+                'Auth-Key': ''  # 关键：添加认证头[citation:7]
+            }
             
             # 查询最近24小时的恶意软件
             data = {
@@ -872,7 +810,7 @@ class ICSThreatCollector:
                 'selector': 'time'
             }
             
-            response = self._safe_request(url, method='POST', data=data)
+            response = self._safe_request(url, method='POST', data=data, headers=headers)
             
             if response:
                 result = response.json()
@@ -1158,9 +1096,6 @@ class ICSThreatCollector:
         time.sleep(2)
         
         results['OpenPhish'] = self.fetch_openphish_fixed()
-        time.sleep(2)
-        
-        results['PhishTank'] = self.fetch_phishing_database()
         time.sleep(2)
         
         results['MalwareBazaar'] = self.fetch_malwarebazaar()
@@ -1500,18 +1435,16 @@ def main():
   - abuseipdb: AbuseIPDB (恶意IP)
   - urlhaus: URLhaus (恶意URL)
   - openphish: OpenPhish (钓鱼网站)
-  - phishtank: PhishTank (钓鱼网站)
   - malwarebazaar: MalwareBazaar (恶意软件)
   - tor: Tor出口节点
   - ics: 工控特定威胁
         '''
     )
     
-    parser.add_argument('--collect-all', action='store_true', 
+    parser.add_argument('--collect-all', action='store_true', default=True,
                        help='从所有数据源收集威胁情报')
     parser.add_argument('--sources', nargs='+', 
-                       choices=['feodo', 'abuseipdb', 'urlhaus', 'openphish', 
-                               'phishtank', 'malwarebazaar', 'tor', 'ics'],
+                       choices=['feodo', 'abuseipdb', 'urlhaus', 'openphish', 'malwarebazaar', 'tor', 'ics'],
                        help='指定要收集的数据源')
     parser.add_argument('--export-csv', action='store_true', 
                        help='导出数据到CSV文件')
@@ -1541,7 +1474,6 @@ def main():
             'abuseipdb': collector.fetch_abuseipdb_fixed,
             'urlhaus': collector.fetch_urlhaus_fixed,
             'openphish': collector.fetch_openphish_fixed,
-            'phishtank': collector.fetch_phishing_database,
             'malwarebazaar': collector.fetch_malwarebazaar,
             'tor': collector.fetch_tor_exit_nodes,
             'ics': collector.fetch_ics_specific_threats
