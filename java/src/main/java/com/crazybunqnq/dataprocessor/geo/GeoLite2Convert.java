@@ -12,29 +12,38 @@ public class GeoLite2Convert {
 
     /**
      * id 对应的地理位置
+     * 330206 -> {String[4]@1567}["中国", "浙江省", "宁波市", "北仑区"]
      */
     private static Map<String, String[]> idLocationMap = new HashMap<>();
     /**
      * 地理位置对应的 id
+     * 中国 四川省 南充市 南部县 -> 511321
      */
     private static Map<String, String> locationIdMap = new HashMap<>();
     /**
-     * 国家或省的 id
-     */
-    private static Map<String, String> parentIdMap = new HashMap<>();
-    /**
      * 已存储的 id 集合
+     * 6159244
+     * 2986077
      */
     private static Set<String> savedIdSet = new HashSet<>();
     /**
      * 已存储的位置集合
+     * 丹麦 南丹麦大区 埃斯比约
+     * 美国 北达科他州 扎普
      */
     private static Set<String> savedLocations = new HashSet<>();
+    /**
+     * 忽略的 id
+     * 需要在其他绑定关系中修改关联 id
+     * 2111937 -> 日本 东京都
+     * 4471123 -> 美国 北卡罗来纳州
+     */
     private static Map<String, String> removedIdMap = new HashMap<>();// 忽略的 id 要在其他绑定关系中修改关联 id
 
     /**
      * 判断重复
      * name + "_" + parent_ip
+     * 马恩河畔讷伊_12278193 -> 2990612
      */
     private static Map<String, String> pidNameMap = new HashMap<>();
     /**
@@ -44,11 +53,24 @@ public class GeoLite2Convert {
      */
     private static Map<String, String> idRewriteMap = new HashMap<>();
 
+    /**
+     * id 对应的地理位置实体
+     * 330206 -> {Geography@2957}Geography(id=330206, name=北仑区, enName=, parentId=330200, lat=29.904659359939, lng=121.85057621461)
+     */
     private static Map<String, Geography> cnRegionMap = new HashMap<>();
+    /**
+     * 中国省市改写映射表
+     * 鲁山 -> 鲁山县
+     */
     private static Map<String, String> chineseProvincesAndCitiesRewritten = new HashMap<>();
+    /**
+     * 中国地理位置 id 与其所属地理位置 id 映射
+     * 330206 -> 330200
+     */
     private static Map<String, String> cnIdPidMap = new HashMap<>();
     /**
      * id 对应的英文名称
+     * 2111937 -> {String[4]@3824}["Japan", "Tokyo", "Minami", "Minami"]
      */
     private static Map<String, String[]> idEnNameMap = new HashMap<>();
 
@@ -78,6 +100,9 @@ public class GeoLite2Convert {
 
                 String id = tokens[0].trim();
                 String name = tokens[1].trim();
+                if (id.startsWith("11")) {
+//                    System.out.println("test2");
+                }
                 String parentId = tokens[2].trim().isEmpty() || "\"\"".equals(tokens[2].trim()) ? "1814991" : (tokens[2].trim());
                 // 长度不足 12 则在前面用 0 补全
                 // id = id.length() < 12 ? "0".repeat(12 - id.length()) + id : id;
@@ -119,6 +144,9 @@ public class GeoLite2Convert {
         //     遍历 cnRegionMap
         for (Geography geography : cnRegionMap.values()) {
             String id = geography.getId();
+            if (id.startsWith("11")) {
+//                System.out.println("test3");
+            }
             String parentId = geography.getParentId();
 
             // 重写 id
@@ -138,15 +166,6 @@ public class GeoLite2Convert {
             String provinceName = split.length > 1 ? split[1] : "";
             String cityName = split.length > 2 ? split[2] : "";
             String simpleName = split[split.length - 1];
-            if (cityName == null || cityName.trim().isEmpty()) {
-                if (provinceName == null || provinceName.trim().isEmpty()) {
-                    parentIdMap.put(contryName, id);
-                } else {
-                    parentIdMap.put(contryName + " " + provinceName, id);
-                }
-            } else if (provinceName == null || provinceName.trim().isEmpty()) {
-                parentIdMap.put(contryName, id);
-            }
             idLocationMap.put(id, new String[]{contryName, provinceName, cityName, simpleName});
 
         }
@@ -161,6 +180,9 @@ public class GeoLite2Convert {
         Geography geography = cnRegionMap.get(id);
         if (geography != null) {
             fullName.insert(0, geography.getName()); // 将当前的名称加到前面
+            if (id.startsWith("11")) {
+//                System.out.println("test4");
+            }
             String parentId = cnIdPidMap.get(id);
             if (parentId != null && !parentId.isEmpty()) {
                 // 如果有父级，递归获取父级的名称
@@ -197,15 +219,6 @@ public class GeoLite2Convert {
                 }
                 if (chineseProvincesAndCitiesRewritten.containsKey(cityName)) {
                     cityName = chineseProvincesAndCitiesRewritten.get(cityName);
-                }
-                if (cityName == null || cityName.trim().isEmpty()) {
-                    if (provinceName == null || provinceName.trim().isEmpty()) {
-                        parentIdMap.put(contryName, id);
-                    } else {
-                        parentIdMap.put(contryName + " " + provinceName, id);
-                    }
-                } else if (provinceName == null || provinceName.trim().isEmpty()) {
-                    parentIdMap.put(contryName, id);
                 }
                 String simpleName = !cityName.isEmpty() ? cityName : (!provinceName.isEmpty() ? provinceName : contryName);
                 String savedName = contryName + " " + provinceName + " " + cityName;
@@ -283,6 +296,50 @@ public class GeoLite2Convert {
         } catch (IOException e) {
             e.printStackTrace();
         }
+        exportAuditCsv(ipv4Path);
+    }
+
+    private static void exportAuditCsv(String ipv4Path) {
+        File ipv4File = new File(ipv4Path);
+        File dir = ipv4File.getParentFile();
+        if (dir == null) {
+            dir = new File(".");
+        }
+        String timestamp = String.valueOf(System.currentTimeMillis());
+        File removedIdMapCsv = new File(dir, ".removedIdMap.csv");
+        File locationIdMapCsv = new File(dir, ".locationIdMap.csv");
+
+        try {
+            writeMapCsv(removedIdMapCsv, "removedGeonameId", "savedName", new java.util.TreeMap<>(removedIdMap));
+            writeMapCsv(locationIdMapCsv, "savedName", "geonameId", new java.util.TreeMap<>(locationIdMap));
+            System.out.println("removedIdMap tmp csv: " + removedIdMapCsv.getAbsolutePath());
+            System.out.println("locationIdMap tmp csv: " + locationIdMapCsv.getAbsolutePath());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void writeMapCsv(File outputFile, String keyHeader, String valueHeader, Map<String, String> map) throws IOException {
+        try (BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(outputFile), java.nio.charset.StandardCharsets.UTF_8))) {
+            bw.write(csvEscape(keyHeader));
+            bw.write(",");
+            bw.write(csvEscape(valueHeader));
+            bw.write("\n");
+            for (Map.Entry<String, String> entry : map.entrySet()) {
+                bw.write(csvEscape(entry.getKey()));
+                bw.write(",");
+                bw.write(csvEscape(entry.getValue()));
+                bw.write("\n");
+            }
+        }
+    }
+
+    private static String csvEscape(String value) {
+        if (value == null) {
+            value = "";
+        }
+        String escaped = value.replace("\"", "\"\"");
+        return "\"" + escaped + "\"";
     }
 
     /**
@@ -313,22 +370,30 @@ public class GeoLite2Convert {
                     String cityName = locationInfo[2];
                     String provinceName = locationInfo[1];
                     String parentName = locationInfo[0];
+                    boolean debug = false;
+                    if ("中国".equals(parentName) && !provinceName.isEmpty()) {
+                        debug = true;
+                        System.out.println(parentName + " " + provinceName + " " + cityName + ": " + geonameId);
+                    }
                     if (savedIdSet.contains(geonameId)) {
                         continue;
                     }
                     String savedName = parentName + " " + provinceName + " " + cityName;
                     savedName = savedName.trim();
+                    if (savedName.contains("北京")) {
+//                        System.out.println("test5");
+                    }
                     String parentId = "";
                     if (!cityName.isEmpty() && !provinceName.isEmpty()) {
                         parentName = parentName + " " + provinceName;
                     }
-                    if (parentIdMap.containsKey(parentName)) {
-                        parentId = parentIdMap.get(parentName);
+                    if (locationIdMap.containsKey(parentName)) {
+                        parentId = locationIdMap.get(parentName);
                     }
                     if (removedIdMap.containsKey(parentId)) {
                         parentId = locationIdMap.get(parentName);
                     }
-                    if (removedIdMap.containsKey(geonameId)) {
+                    if (removedIdMap.containsKey(geonameId)) { // 香港 id 错误
                         geonameId = locationIdMap.get(savedName);
                     }
                     if (savedLocations.contains(savedName)) {
@@ -340,7 +405,7 @@ public class GeoLite2Convert {
                     }
 
                     String key = simpleName + "_" + parentId;
-                    if (pidNameMap.containsKey(key)) {
+                    if (pidNameMap.containsKey(key)) {// 香港需要重写
                         idRewriteMap.put(geonameId, pidNameMap.get(key));
                         System.out.println(simpleName + " id: " + geonameId + " 改写为 " + pidNameMap.get(key));
                         continue;
@@ -361,6 +426,9 @@ public class GeoLite2Convert {
                     // 清理JSON字符串中的特殊字符
                     String cleanedEnName = cleanJsonString(enName);
                     String entry;
+                    if (debug) {
+                        System.out.println(geonameId + " " + parentId + " " + simpleName + " " + cleanedEnName);
+                    }
                     if (parentId == null || "".equals(parentId.trim()) || geonameId.equals(parentId)) {
                         entry = String.format("{\"latitude\": %s, \"name\": \"%s\", \"enName\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": null, \"longitude\": %s}", latitude, simpleName, cleanedEnName, geonameId, geonameId, longitude);
                     } else {
@@ -403,6 +471,9 @@ public class GeoLite2Convert {
                 // id = id.length() < 12 ? "0".repeat(12 - id.length()) + id : id;
                 String name = tokens[1].trim();
                 // name = renameLocation(name);
+                if (id.startsWith("11")) {
+//                    System.out.println("test1");
+                }
                 String parentId = tokens[2].trim().isEmpty() || "\"\"".equals(tokens[2].trim()) ? "1814991" : (tokens[2].trim());
                 // 长度不足 12 则在前面用 0 补全
                 // parentId = !"1814991".equals(parentId) && parentId.length() < 12 ? "0".repeat(12 - parentId.length()) + parentId : parentId;
