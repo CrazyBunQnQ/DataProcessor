@@ -3,6 +3,11 @@ import re
 import pathlib
 import sys
 import logging
+try:
+    from tqdm import tqdm
+except Exception:
+    def tqdm(x, **kwargs):
+        return x
 sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
 from openai_client import OpenAIClient, is_empty
 
@@ -59,7 +64,8 @@ def main():
     skipped_no_rule = 0
     skipped_has_solution = 0
     total = len(data)
-    for vuln in data:
+    bar = tqdm(data, desc='处理漏洞', unit='条')
+    for vuln in bar:
         raw_cve = vuln.get('cve') if isinstance(vuln, dict) else None
         if is_empty(raw_cve):
             raw_cve = vuln.get('nvdCve') if isinstance(vuln, dict) else None
@@ -67,31 +73,33 @@ def main():
         if is_empty(vuln.get('solution')):
             if is_empty(cve):
                 skipped_no_rule += 1
+                bar.set_postfix(filled=filled, skipped_no_rule=skipped_no_rule, skipped_has_solution=skipped_has_solution)
                 continue
             if cve in cache and not is_empty(cache[cve]):
                 vuln['solution'] = cache[cve]
                 filled += 1
                 logging.info(f'使用缓存修复建议: {cve}')
+                bar.set_postfix(filled=filled, skipped_no_rule=skipped_no_rule, skipped_has_solution=skipped_has_solution)
                 continue
             cve_norm = normalize(cve)
             if not cve_norm:
                 skipped_no_rule += 1
+                bar.set_postfix(filled=filled, skipped_no_rule=skipped_no_rule, skipped_has_solution=skipped_has_solution)
                 continue
             matched = [rl for rl, norm, ln in rules_lines if cve_norm in norm]
             if not matched:
                 skipped_no_rule += 1
+                bar.set_postfix(filled=filled, skipped_no_rule=skipped_no_rule, skipped_has_solution=skipped_has_solution)
                 continue
             advice_text = '\n'.join(matched)
             logging.info(f'匹配到 {cve} 的处置建议行数: {len(matched)}')
             sol = None
             if client.api_key:
-                # logging.info(f'调用模型输入预览: {cve} | 长度 {len(advice_text)} | 文本 {advice_text[:200]}')
-                logging.info(f'调用模型输入预览: {cve} | 长度 {len(advice_text)} | 文本 {advice_text}')
                 sol = client.generate_solution_with_advice(cve_id=cve, vuln=vuln, advice_text=advice_text, target_lang='中文')
             if sol and not is_empty(sol):
                 vuln['solution'] = sol
                 try:
-                    fh.write(json.dumps({'cve': cve, 'solution': sol}, ensure_ascii=False) + '\n')
+                    fh.write(json.dumps({'cve': cve, 'solution': sol, 'according': 'suggest'}, ensure_ascii=False) + '\n')
                     fh.flush()
                     cache[cve] = sol
                 except Exception:
@@ -101,8 +109,10 @@ def main():
                 filled += 1
             else:
                 logging.warning(f'未生成修复建议或返回为空: {cve}')
+            bar.set_postfix(filled=filled, skipped_no_rule=skipped_no_rule, skipped_has_solution=skipped_has_solution)
         else:
             skipped_has_solution += 1
+            bar.set_postfix(filled=filled, skipped_no_rule=skipped_no_rule, skipped_has_solution=skipped_has_solution)
     logging.info(f'处理完成，总计 {total} 条，填充 {filled} 条，跳过(无规则匹配或无CVE) {skipped_no_rule} 条，已有方案 {skipped_has_solution} 条')
     output_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
     logging.info(f'输出文件: {output_path}')
