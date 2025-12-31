@@ -35,12 +35,20 @@ def _load_env():
 _load_env()
 
 class TranslationClient:
-    def __init__(self):
+    def __init__(self, debug=None):
         self.provider = (os.environ.get('TRANSLATE_PROVIDER', 'ai') or 'ai').strip().lower()
         self.session = requests.Session()
         self.ai = OpenAIClient() if self.provider == 'ai' else None
         self.timeout = float(os.environ.get('GOOGLE_TRANSLATE_TIMEOUT', '10'))
         self.max_retries = int(os.environ.get('GOOGLE_TRANSLATE_MAX_RETRIES', '3'))
+        if debug is None:
+            v = (os.environ.get('TRANSLATE_DEBUG', 'false') or 'false').strip().lower()
+            self.debug = v in ['1', 'true', 'yes', 'on']
+        else:
+            self.debug = bool(debug)
+        self._start_ts = time.time()
+        self._total_time = 0.0
+        self._count = 0
 
     def can_translate(self):
         if self.provider == 'ai':
@@ -49,9 +57,18 @@ class TranslationClient:
 
     def translate(self, text, target_lang='English'):
         s = str(text)
+        t0 = time.time()
         if self.provider == 'ai':
-            return self.ai.translate(s, target_lang or 'English')
-        return self._google_translate(s, target_lang)
+            res = self.ai.translate(s, target_lang or 'English')
+        else:
+            res = self._google_translate(s, target_lang)
+        dt = time.time() - t0
+        self._total_time += dt
+        self._count += 1
+        if self.debug:
+            rate = (self._count / self._total_time) if self._total_time > 0 else 0.0
+            print(f"翻译速度: {rate:.3f}/s")
+        return res
 
     def _to_google_lang(self, target_lang):
         t = (target_lang or '').strip().lower()
@@ -64,6 +81,7 @@ class TranslationClient:
         return 'en'
 
     def _google_translate(self, text, target_lang):
+        debug = True
         base_url = 'https://translate.googleapis.com/translate_a/single'
         q = urllib.parse.quote(text)
         tl = self._to_google_lang(target_lang)
@@ -94,6 +112,7 @@ class TranslationClient:
                             return None
                 time.sleep(delay)
                 delay = min(delay * 2, 10)
+                print(f'Google translate status code: {r.status_code}; retry in {delay}s')
             except Exception as e:
                 print(f'Google translate error: {str(e)}; retry in {delay}s')
                 time.sleep(delay)
