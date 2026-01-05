@@ -87,25 +87,25 @@ def main():
                 bar.set_postfix(filled=filled, skipped_no_rule=skipped_no_rule, skipped_has_solution=skipped_has_solution)
                 continue
             matched = [rl for rl, norm, ln in rules_lines if cve_norm in norm]
-            if not matched:
-                skipped_no_rule += 1
-                bar.set_postfix(filled=filled, skipped_no_rule=skipped_no_rule, skipped_has_solution=skipped_has_solution)
-                continue
-            advice_text = '\n'.join(matched)
-            logging.info(f'匹配到 {cve} 的处置建议行数: {len(matched)}')
+            advice_text = None
+            according = 'AI'
+            if matched:
+                advice_text = '\n'.join(matched)
+                according = 'suggest'
+                logging.info(f'匹配到 {cve} 的处置建议行数: {len(matched)}')
+            
             sol = None
             if client.api_key:
                 sol = client.generate_solution_with_advice(cve_id=cve, vuln=vuln, advice_text=advice_text, target_lang='中文')
             if sol and not is_empty(sol):
                 vuln['solution'] = sol
                 try:
-                    fh.write(json.dumps({'cve': cve, 'solution': sol, 'according': 'suggest'}, ensure_ascii=False) + '\n')
+                    fh.write(json.dumps({'cve': cve, 'solution': sol, 'according': according}, ensure_ascii=False) + '\n')
                     fh.flush()
                     cache[cve] = sol
                 except Exception:
                     pass
-                # logging.info(f'调用模型输出预览: {cve} | 长度 {len(sol)} | 文本 {sol[:200]}')
-                logging.info(f'调用模型输出预览: {cve} | 长度 {len(sol)} | 文本 {sol}')
+                logging.info(f'调用模型输出预览: {cve} | 来源 {according} | 长度 {len(sol)} | 文本\n{sol}')
                 filled += 1
             else:
                 logging.warning(f'未生成修复建议或返回为空: {cve}')
