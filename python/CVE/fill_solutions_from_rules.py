@@ -14,6 +14,13 @@ from openai_client import OpenAIClient, is_empty
 def normalize(text):
     return str(text or '').lower().replace('_', '-').strip()
 
+def sanitize_solution(text):
+    s = str(text or '')
+    s = s.replace('**', '')
+    lines = [ln.strip() for ln in s.splitlines()]
+    lines = [ln for ln in lines if ln]
+    return '\n'.join(lines).strip()
+
 def load_rule_lines(path):
     lines = []
     p = pathlib.Path(path)
@@ -54,7 +61,7 @@ def main():
             try:
                 obj = json.loads(s)
                 kc = str(obj.get('cve') or '').strip()
-                kv = str(obj.get('solution') or '').strip()
+                kv = sanitize_solution(str(obj.get('solution') or '').strip())
                 if kc and kv:
                     cache[kc] = kv
             except Exception:
@@ -98,14 +105,15 @@ def main():
             if client.api_key:
                 sol = client.generate_solution_with_advice(cve_id=cve, vuln=vuln, advice_text=advice_text, target_lang='中文')
             if sol and not is_empty(sol):
-                vuln['solution'] = sol
+                clean = sanitize_solution(sol)
+                vuln['solution'] = clean
                 try:
-                    fh.write(json.dumps({'cve': cve, 'solution': sol, 'according': according}, ensure_ascii=False) + '\n')
+                    fh.write(json.dumps({'cve': cve, 'solution': clean, 'according': according}, ensure_ascii=False) + '\n')
                     fh.flush()
-                    cache[cve] = sol
+                    cache[cve] = clean
                 except Exception:
                     pass
-                logging.info(f'调用模型输出预览: {cve} | 来源 {according} | 长度 {len(sol)} | 文本\n{sol}')
+                logging.info(f'调用模型输出预览: {cve} | 来源 {according} | 长度 {len(clean)} | 文本\n{clean}')
                 filled += 1
             else:
                 logging.warning(f'未生成修复建议或返回为空: {cve}')
