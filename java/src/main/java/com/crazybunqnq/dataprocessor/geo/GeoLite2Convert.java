@@ -426,6 +426,15 @@ public class GeoLite2Convert {
                     if (simpleName == null || simpleName.trim().isEmpty()) {
                         continue;
                     }
+                    // 忽略错误数据
+                    if (ignoredForeignIDs.contains(geonameId) && !"中国".equals(parentName)) {
+                        System.out.println("忽略: " + geonameId + " " + parentName + " " + provinceName + " " + cityName);
+                        continue;
+                    }
+                    if (("1814991".equals(parentId) && "吉林市".equals(simpleName))) {
+                        System.out.println("忽略多余的吉林市: " + simpleName);
+                        continue;
+                    }
 
                     String key = simpleName + "_" + parentId;
                     if (pidNameMap.containsKey(key)) {
