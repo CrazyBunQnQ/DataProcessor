@@ -3,10 +3,7 @@ package com.crazybunqnq.dataprocessor.geo;
 import java.io.*;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 public class GeoLite2Convert {
 
@@ -20,6 +17,10 @@ public class GeoLite2Convert {
      * 中国 四川省 南充市 南部县 -> 511321
      */
     private static Map<String, String> locationIdMap = new HashMap<>();
+    /**
+     * 国家或省的 id
+     */
+    private static Map<String, String> parentIdMap = new HashMap<>();
     /**
      * 已存储的 id 集合
      * 6159244
@@ -73,6 +74,10 @@ public class GeoLite2Convert {
      * 2111937 -> {String[4]@3824}["Japan", "Tokyo", "Minami", "Minami"]
      */
     private static Map<String, String[]> idEnNameMap = new HashMap<>();
+    /**
+     * 忽略的外国 id，因为跟中国统一 id 充图
+     */
+    private static List<String> ignoredForeignIDs = Arrays.asList("152224", "360502", "360829");
 
     public static void main(String[] args) {
     }
@@ -166,6 +171,15 @@ public class GeoLite2Convert {
             String provinceName = split.length > 1 ? split[1] : "";
             String cityName = split.length > 2 ? split[2] : "";
             String simpleName = split[split.length - 1];
+            if (cityName == null || cityName.trim().isEmpty()) {
+                if (provinceName == null || provinceName.trim().isEmpty()) {
+                    parentIdMap.put(contryName, id);
+                } else {
+                    parentIdMap.put(contryName + " " + provinceName, id);
+                }
+            } else if (provinceName == null || provinceName.trim().isEmpty()) {
+                parentIdMap.put(contryName, id);
+            }
             idLocationMap.put(id, new String[]{contryName, provinceName, cityName, simpleName});
 
         }
@@ -219,6 +233,15 @@ public class GeoLite2Convert {
                 }
                 if (chineseProvincesAndCitiesRewritten.containsKey(cityName)) {
                     cityName = chineseProvincesAndCitiesRewritten.get(cityName);
+                }
+                if (cityName == null || cityName.trim().isEmpty()) {
+                    if (provinceName == null || provinceName.trim().isEmpty()) {
+                        parentIdMap.put(contryName, id);
+                    } else {
+                        parentIdMap.put(contryName + " " + provinceName, id);
+                    }
+                } else if (provinceName == null || provinceName.trim().isEmpty()) {
+                    parentIdMap.put(contryName, id);
                 }
                 String simpleName = !cityName.isEmpty() ? cityName : (!provinceName.isEmpty() ? provinceName : contryName);
                 String savedName = contryName + " " + provinceName + " " + cityName;
@@ -387,13 +410,13 @@ public class GeoLite2Convert {
                     if (!cityName.isEmpty() && !provinceName.isEmpty()) {
                         parentName = parentName + " " + provinceName;
                     }
-                    if (locationIdMap.containsKey(parentName)) {
-                        parentId = locationIdMap.get(parentName);
+                    if (parentIdMap.containsKey(parentName)) {
+                        parentId = parentIdMap.get(parentName);
                     }
                     if (removedIdMap.containsKey(parentId)) {
                         parentId = locationIdMap.get(parentName);
                     }
-                    if (removedIdMap.containsKey(geonameId)) { // 香港 id 错误
+                    if (removedIdMap.containsKey(geonameId)) {
                         geonameId = locationIdMap.get(savedName);
                     }
                     if (savedLocations.contains(savedName)) {
@@ -405,7 +428,7 @@ public class GeoLite2Convert {
                     }
 
                     String key = simpleName + "_" + parentId;
-                    if (pidNameMap.containsKey(key)) {// 香港需要重写
+                    if (pidNameMap.containsKey(key)) {
                         idRewriteMap.put(geonameId, pidNameMap.get(key));
                         System.out.println(simpleName + " id: " + geonameId + " 改写为 " + pidNameMap.get(key));
                         continue;
@@ -430,9 +453,9 @@ public class GeoLite2Convert {
                         System.out.println(geonameId + " " + parentId + " " + simpleName + " " + cleanedEnName);
                     }
                     if (parentId == null || "".equals(parentId.trim()) || geonameId.equals(parentId)) {
-                        entry = String.format("{\"latitude\": %s, \"name\": \"%s\", \"enName\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": null, \"longitude\": %s}", latitude, simpleName, cleanedEnName, geonameId, geonameId, longitude);
+                        entry = String.format("{\"name\": \"%s\", \"enName\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": null, \"builtIn\": true, \"latitude\": %s, \"longitude\": %s}", simpleName, cleanedEnName, geonameId, geonameId, latitude, longitude);
                     } else {
-                        entry = String.format("{\"latitude\": %s, \"name\": \"%s\", \"enName\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": \"%s\", \"longitude\": %s}", latitude, simpleName, cleanedEnName, geonameId, geonameId, parentId, longitude);
+                        entry = String.format("{\"name\": \"%s\", \"enName\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": \"%s\", \"builtIn\": true, \"latitude\": %s, \"longitude\": %s}", simpleName, cleanedEnName, geonameId, geonameId, parentId, latitude, longitude);
                         pidNameMap.put(key, geonameId);
                     }
                     fw.write(entry);
@@ -481,8 +504,8 @@ public class GeoLite2Convert {
                 String lat = tokens[4].trim();
 
                 String entry = String.format(
-                        "{\"latitude\": %s, \"name\": \"%s\", \"enName\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": \"%s\", \"longitude\": %s}",
-                        lat, name, "", id, id, parentId, lng);
+                        "{\"name\": \"%s\", \"enName\": \"%s\", \"id\": \"%s\", \"orderValue\": %s, \"parentId\": \"%s\", \"builtIn\": true, \"latitude\": %s, \"longitude\": %s}",
+                        name, "", id, id, parentId, lat, lng);
 
                 fw.write(",\n");
                 fw.write(entry);
