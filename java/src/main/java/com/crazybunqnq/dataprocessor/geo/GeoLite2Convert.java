@@ -78,6 +78,12 @@ public class GeoLite2Convert {
      * 忽略的外国 id，因为跟中国统一 id 充图
      */
     private static List<String> ignoredForeignIDs = Arrays.asList("152224", "360502", "360829");
+    private static List<String> cnParentIds = Arrays.asList("110000", "120000", "130000", "130000", "140000", "210000",
+            "310000", "320000", "330000", "340000", "350000", "360000", "370000",
+            "410000", "420000", "430000", "440000", "450000", "460000",
+            "500000", "510000", "520000", "530000", "540000",
+            "610000", "620000", "630000", "640000", "650000",
+            "710000", "720000", "730000");
 
     public static void main(String[] args) {
     }
@@ -431,8 +437,9 @@ public class GeoLite2Convert {
                         System.out.println("忽略: " + geonameId + " " + parentName + " " + provinceName + " " + cityName);
                         continue;
                     }
-                    if (("1814991".equals(parentId) && "吉林市".equals(simpleName))) {
-                        System.out.println("忽略多余的吉林市: " + simpleName);
+                    if (("1814991".equals(parentId) && "吉林市".equals(simpleName))
+                            || (cnParentIds.contains(parentId) && geonameId.length() > 6)) {
+                        System.out.println("忽略多余的地理位置: " + parentId + " " + geonameId + " " + simpleName);
                         continue;
                     }
 
