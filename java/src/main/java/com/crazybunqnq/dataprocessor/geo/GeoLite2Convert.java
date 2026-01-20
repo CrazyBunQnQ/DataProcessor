@@ -383,6 +383,7 @@ public class GeoLite2Convert {
             br.readLine(); // Skip header
             fw.write("[");
             boolean firstEntry = true;
+            Set<String> ignoredTemp = new HashSet<>();
             while ((line = br.readLine()) != null) {
                 String[] values = line.split(",");
                 String geonameId = values[1];
@@ -402,7 +403,7 @@ public class GeoLite2Convert {
                     boolean debug = false;
                     if ("中国".equals(parentName) && !provinceName.isEmpty()) {
                         debug = true;
-                        System.out.println(parentName + " " + provinceName + " " + cityName + ": " + geonameId);
+                        // System.out.println(parentName + " " + provinceName + " " + cityName + ": " + geonameId);
                     }
                     if (savedIdSet.contains(geonameId)) {
                         continue;
@@ -434,12 +435,18 @@ public class GeoLite2Convert {
                     }
                     // 忽略错误数据
                     if (ignoredForeignIDs.contains(geonameId) && !"中国".equals(parentName)) {
-                        System.out.println("忽略: " + geonameId + " " + parentName + " " + provinceName + " " + cityName);
+                        if (!ignoredTemp.contains(geonameId + " " + parentName + " " + provinceName + " " + cityName)) {
+                            System.out.println("忽略: " + geonameId + " " + parentName + " " + provinceName + " " + cityName);
+                            ignoredTemp.add(geonameId + " " + parentName + " " + provinceName + " " + cityName);
+                        }
                         continue;
                     }
                     if (("1814991".equals(parentId) && "吉林市".equals(simpleName))
                             || (cnParentIds.contains(parentId) && geonameId.length() > 6)) {
-                        System.out.println("忽略多余的地理位置: " + parentId + " " + geonameId + " " + simpleName);
+                        if (!ignoredTemp.contains(parentId + " " + geonameId + " " + simpleName)) {
+                            System.out.println("忽略多余的地理位置: " + parentId + " " + geonameId + " " + simpleName);
+                            ignoredTemp.add(parentId + " " + geonameId + " " + simpleName);
+                        }
                         continue;
                     }
 
