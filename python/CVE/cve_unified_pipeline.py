@@ -393,6 +393,20 @@ def record_key(rec: Dict[str, Any]) -> str:
     return normalize_text(rec.get("cve")) or normalize_text(rec.get("nvdCve")) or normalize_text(rec.get("cnnvd")) or "UNKNOWN"
 
 
+def strip_null_fields(data: Any) -> Any:
+    if isinstance(data, dict):
+        cleaned = {}
+        for k, v in data.items():
+            if v is None:
+                continue
+            cleaned_v = strip_null_fields(v)
+            cleaned[k] = cleaned_v
+        return cleaned
+    if isinstance(data, list):
+        return [strip_null_fields(x) for x in data if x is not None]
+    return data
+
+
 def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
     date_str = datetime.now().strftime(args.date_format)
     output_path = build_output_path(args.output, date_str)
@@ -440,7 +454,7 @@ def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
             continue
         rec_id = record_key(rec)
         if debug_logger:
-            debug_logger.debug("before %s %s", rec_id, json.dumps(rec, ensure_ascii=False, sort_keys=True))
+            debug_logger.debug("before %s %s", rec_id, json.dumps(strip_null_fields(rec), ensure_ascii=False, sort_keys=True))
         fix_bilingual_pair(rec, "title", "enTitle", translator, translate_cache, translate_cache_path)
         if is_empty(rec.get("threatName")) and not is_empty(rec.get("title")):
             rec["threatName"] = rec.get("title")
@@ -483,7 +497,7 @@ def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
         fill_solution(rec, rules, ai, solution_cache, solution_cache_path)
         fix_bilingual_pair(rec, "solution", "enSolution", translator, translate_cache, translate_cache_path)
         if debug_logger:
-            debug_logger.debug("after %s %s", rec_id, json.dumps(rec, ensure_ascii=False, sort_keys=True))
+            debug_logger.debug("after %s %s", rec_id, json.dumps(strip_null_fields(rec), ensure_ascii=False, sort_keys=True))
     for idx, rec in enumerate(records, start=1):
         if is_empty(rec.get("id")):
             rec["id"] = str(idx)
