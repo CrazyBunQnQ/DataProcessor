@@ -34,6 +34,21 @@ python cve_full_generator.py -o CVE_full_20251208.json --cache-file translate_ca
 
 ### 补全修复建议
 
+确保目录下存在 `.env` 文件配置了 `OPENAI_API_KEY`。
+
+运行脚本：
+
+```bash
+python fill_solutions_from_rules.py
+```
+
+脚本会自动读取当前目录下的 `CVE_full_20251205.json`（如需修改输入文件请编辑脚本），并加载 `solutions_cache.jsonl` 缓存。
+对于 `solution` 字段为空的数据：
+1. 尝试在 `rules.sugst` 中匹配相关处置建议。
+2. 若匹配成功，以建议为上下文生成修复方案（来源标记为 `suggest`）。
+3. 若未匹配，直接根据漏洞描述生成修复方案（来源标记为 `AI`）。
+4. 生成结果实时写入缓存，最终输出到 `CVE_full_20251205_solution.json`。
+
 进入 cve 目录
 
 修改相关路径
