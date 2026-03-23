@@ -179,7 +179,8 @@ def translate_with_cache(
     cache_path: pathlib.Path,
     text: str,
     target_lang: str,
-    kind: str
+    kind: str,
+    trace: Optional[Dict[str, Any]] = None
 ) -> Optional[str]:
     s = normalize_text(text)
     if not s:
@@ -193,7 +194,12 @@ def translate_with_cache(
         ("", "any", s)
     ]:
         if cache_key in cache:
+            if trace is not None:
+                trace["translate_cache_hit"] = True
+                trace["translate_cache_hit_count"] = int(trace.get("translate_cache_hit_count", 0)) + 1
             return cache[cache_key]
+    if trace is not None:
+        trace["translate_cache_miss_count"] = int(trace.get("translate_cache_miss_count", 0)) + 1
     out = client.translate(s, target_lang=target_lang)
     out_clean = normalize_text(out)
     if out_clean:
@@ -210,7 +216,8 @@ def fix_bilingual_pair(
     en_key: str,
     translator: TranslationClient,
     translate_cache: Dict[Tuple[str, str, str], str],
-    translate_cache_path: pathlib.Path
+    translate_cache_path: pathlib.Path,
+    trace: Optional[Dict[str, Any]] = None
 ) -> None:
     zh_val = normalize_text(rec.get(zh_key))
     en_val = normalize_text(rec.get(en_key))
@@ -223,7 +230,8 @@ def fix_bilingual_pair(
                 translate_cache_path,
                 source_for_zh,
                 "中文",
-                kind=zh_key
+                kind=zh_key,
+                trace=trace
             )
             if tr_zh:
                 zh_val = tr_zh
@@ -235,7 +243,8 @@ def fix_bilingual_pair(
                 translate_cache_path,
                 en_val,
                 "中文",
-                kind=zh_key
+                kind=zh_key,
+                trace=trace
             )
             if tr_zh:
                 zh_val = tr_zh
@@ -248,7 +257,8 @@ def fix_bilingual_pair(
                 translate_cache_path,
                 source_for_en,
                 "English",
-                kind=en_key
+                kind=en_key,
+                trace=trace
             )
             if tr_en:
                 en_val = tr_en
@@ -260,7 +270,8 @@ def fix_bilingual_pair(
                 translate_cache_path,
                 zh_val,
                 "English",
-                kind=en_key
+                kind=en_key,
+                trace=trace
             )
             if tr_en:
                 en_val = tr_en
@@ -275,20 +286,30 @@ def fill_solution(
     rules: List[Tuple[str, str]],
     ai: OpenAIClient,
     solution_cache: Dict[str, str],
-    solution_cache_path: pathlib.Path
+    solution_cache_path: pathlib.Path,
+    trace: Optional[Dict[str, Any]] = None
 ) -> None:
     cve_id = normalize_text(rec.get("cve") or rec.get("nvdCve"))
     cur = sanitize_solution(rec.get("solution"))
     if cur:
         rec["solution"] = cur
+        if trace is not None:
+            trace["solution_cache_hit"] = False
+            trace["solution_source"] = "record"
         if cve_id and cve_id not in solution_cache:
             solution_cache[cve_id] = cur
             append_kv_cache(solution_cache_path, {"cve": cve_id, "solution": cur, "according": "existing"})
         return
     if not cve_id:
+        if trace is not None:
+            trace["solution_cache_hit"] = False
+            trace["solution_source"] = "no_cve"
         return
     if cve_id in solution_cache and solution_cache[cve_id]:
         rec["solution"] = solution_cache[cve_id]
+        if trace is not None:
+            trace["solution_cache_hit"] = True
+            trace["solution_source"] = "cache"
         return
     cve_norm = normalize_rule_line(cve_id)
     matched = [line for line, norm in rules if cve_norm and cve_norm in norm]
@@ -300,6 +321,13 @@ def fill_solution(
         rec["solution"] = clean
         solution_cache[cve_id] = clean
         append_kv_cache(solution_cache_path, {"cve": cve_id, "solution": clean, "according": source})
+        if trace is not None:
+            trace["solution_cache_hit"] = False
+            trace["solution_source"] = source
+    else:
+        if trace is not None:
+            trace["solution_cache_hit"] = False
+            trace["solution_source"] = "empty"
 
 
 def merge_records(records: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -453,15 +481,22 @@ def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
         if not isinstance(rec, dict):
             continue
         rec_id = record_key(rec)
+        trace: Dict[str, Any] = {
+            "translate_cache_hit": False,
+            "translate_cache_hit_count": 0,
+            "translate_cache_miss_count": 0,
+            "solution_cache_hit": False,
+            "solution_source": ""
+        }
         if debug_logger:
             debug_logger.debug("before %s %s", rec_id, json.dumps(strip_null_fields(rec), ensure_ascii=False, sort_keys=True))
-        fix_bilingual_pair(rec, "title", "enTitle", translator, translate_cache, translate_cache_path)
+        fix_bilingual_pair(rec, "title", "enTitle", translator, translate_cache, translate_cache_path, trace=trace)
         if is_empty(rec.get("threatName")) and not is_empty(rec.get("title")):
             rec["threatName"] = rec.get("title")
         if is_empty(rec.get("threatNameEng")) and not is_empty(rec.get("enTitle")):
             rec["threatNameEng"] = rec.get("enTitle")
-        fix_bilingual_pair(rec, "threatName", "threatNameEng", translator, translate_cache, translate_cache_path)
-        fix_bilingual_pair(rec, "description", "vulnDescription", translator, translate_cache, translate_cache_path)
+        fix_bilingual_pair(rec, "threatName", "threatNameEng", translator, translate_cache, translate_cache_path, trace=trace)
+        fix_bilingual_pair(rec, "description", "vulnDescription", translator, translate_cache, translate_cache_path, trace=trace)
         desc_eng = normalize_text(rec.get("descriptionEng"))
         if desc_eng:
             if has_chinese(desc_eng):
@@ -471,7 +506,8 @@ def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
                     translate_cache_path,
                     desc_eng,
                     "English",
-                    kind="descriptionEng"
+                    kind="descriptionEng",
+                    trace=trace
                 )
                 if translated_desc_eng:
                     desc_eng = translated_desc_eng
@@ -488,15 +524,17 @@ def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
                         translate_cache_path,
                         source_cn,
                         "English",
-                        kind="descriptionEng"
+                        kind="descriptionEng",
+                        trace=trace
                     )
                     if translated_desc_eng:
                         desc_eng = translated_desc_eng
         if desc_eng:
             rec["descriptionEng"] = desc_eng
-        fill_solution(rec, rules, ai, solution_cache, solution_cache_path)
-        fix_bilingual_pair(rec, "solution", "enSolution", translator, translate_cache, translate_cache_path)
+        fill_solution(rec, rules, ai, solution_cache, solution_cache_path, trace=trace)
+        fix_bilingual_pair(rec, "solution", "enSolution", translator, translate_cache, translate_cache_path, trace=trace)
         if debug_logger:
+            debug_logger.debug("cache %s %s", rec_id, json.dumps(trace, ensure_ascii=False, sort_keys=True))
             debug_logger.debug("after %s %s", rec_id, json.dumps(strip_null_fields(rec), ensure_ascii=False, sort_keys=True))
     for idx, rec in enumerate(records, start=1):
         if is_empty(rec.get("id")):
