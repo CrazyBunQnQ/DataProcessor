@@ -39,6 +39,11 @@ def detect_language(text: Any) -> str:
     return "mixed"
 
 
+def has_chinese(text: Any) -> bool:
+    s = str(text or "")
+    return bool(re.search(r"[\u4e00-\u9fff]", s))
+
+
 def normalize_text(text: Any) -> str:
     return str(text or "").strip()
 
@@ -209,40 +214,56 @@ def fix_bilingual_pair(
 ) -> None:
     zh_val = normalize_text(rec.get(zh_key))
     en_val = normalize_text(rec.get(en_key))
-    zh_lang = detect_language(zh_val)
-    en_lang = detect_language(en_val)
-    if not zh_val or zh_lang != "zh":
-        source = en_val if en_val and en_lang in {"en", "mixed"} else zh_val
-        if source:
-            if detect_language(source) == "zh":
-                zh_val = source
-            else:
-                tr = translate_with_cache(
-                    translator,
-                    translate_cache,
-                    translate_cache_path,
-                    source,
-                    "中文",
-                    kind=zh_key
-                )
-                if tr:
-                    zh_val = tr
-    if not en_val or en_lang != "en":
-        source = zh_val if zh_val and detect_language(zh_val) in {"zh", "mixed"} else en_val
-        if source:
-            if detect_language(source) == "en":
-                en_val = source
-            else:
-                tr = translate_with_cache(
-                    translator,
-                    translate_cache,
-                    translate_cache_path,
-                    source,
-                    "English",
-                    kind=en_key
-                )
-                if tr:
-                    en_val = tr
+    if zh_val:
+        if not has_chinese(zh_val):
+            source_for_zh = zh_val
+            tr_zh = translate_with_cache(
+                translator,
+                translate_cache,
+                translate_cache_path,
+                source_for_zh,
+                "中文",
+                kind=zh_key
+            )
+            if tr_zh:
+                zh_val = tr_zh
+    else:
+        if en_val:
+            tr_zh = translate_with_cache(
+                translator,
+                translate_cache,
+                translate_cache_path,
+                en_val,
+                "中文",
+                kind=zh_key
+            )
+            if tr_zh:
+                zh_val = tr_zh
+    if en_val:
+        if has_chinese(en_val):
+            source_for_en = en_val
+            tr_en = translate_with_cache(
+                translator,
+                translate_cache,
+                translate_cache_path,
+                source_for_en,
+                "English",
+                kind=en_key
+            )
+            if tr_en:
+                en_val = tr_en
+    else:
+        if zh_val:
+            tr_en = translate_with_cache(
+                translator,
+                translate_cache,
+                translate_cache_path,
+                zh_val,
+                "English",
+                kind=en_key
+            )
+            if tr_en:
+                en_val = tr_en
     if zh_val:
         rec[zh_key] = zh_val
     if en_val:
@@ -428,26 +449,35 @@ def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
         fix_bilingual_pair(rec, "threatName", "threatNameEng", translator, translate_cache, translate_cache_path)
         fix_bilingual_pair(rec, "description", "vulnDescription", translator, translate_cache, translate_cache_path)
         desc_eng = normalize_text(rec.get("descriptionEng"))
-        if not desc_eng or detect_language(desc_eng) != "en":
+        if desc_eng:
+            if has_chinese(desc_eng):
+                translated_desc_eng = translate_with_cache(
+                    translator,
+                    translate_cache,
+                    translate_cache_path,
+                    desc_eng,
+                    "English",
+                    kind="descriptionEng"
+                )
+                if translated_desc_eng:
+                    desc_eng = translated_desc_eng
+        else:
             source_eng = normalize_text(rec.get("vulnDescription"))
-            if source_eng and detect_language(source_eng) == "en":
+            if source_eng and not has_chinese(source_eng):
                 desc_eng = source_eng
             else:
                 source_cn = normalize_text(rec.get("description"))
                 if source_cn:
-                    if detect_language(source_cn) == "en":
-                        desc_eng = source_cn
-                    else:
-                        translated_desc_eng = translate_with_cache(
-                            translator,
-                            translate_cache,
-                            translate_cache_path,
-                            source_cn,
-                            "English",
-                            kind="descriptionEng"
-                        )
-                        if translated_desc_eng:
-                            desc_eng = translated_desc_eng
+                    translated_desc_eng = translate_with_cache(
+                        translator,
+                        translate_cache,
+                        translate_cache_path,
+                        source_cn,
+                        "English",
+                        kind="descriptionEng"
+                    )
+                    if translated_desc_eng:
+                        desc_eng = translated_desc_eng
         if desc_eng:
             rec["descriptionEng"] = desc_eng
         fill_solution(rec, rules, ai, solution_cache, solution_cache_path)
