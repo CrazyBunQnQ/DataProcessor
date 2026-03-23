@@ -290,7 +290,7 @@ def main():
         out = Path(args.output)
     else:
         out = Path(__file__).resolve().parent / f'CVE_full_{datetime.now().strftime("%Y%m%d")}.json'
-    client = TranslationClient()
+    client = TranslationClient(debug=True)
     cache_path = Path(args.cache_file) if args.cache_file else None
     process_files(inputs, out, client, progress_interval=args.progress_interval, debug=args.debug, cache_file=cache_path)
 
