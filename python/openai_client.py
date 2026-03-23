@@ -50,7 +50,10 @@ class OpenAIClient:
                 {'role': 'system', 'content': f'Translate the content posted by the user into {target_lang} and keep the original format. Only return the translation result without any additional instructions or styles.'},
                 {'role': 'user', 'content': text}
             ],
-            'temperature': 0
+            'temperature': 0,
+            'chat_template_kwargs': {
+                'enable_thinking': False
+            }
         }
         headers = {
             'Authorization': f'Bearer {self.api_key}',
@@ -108,7 +111,10 @@ class OpenAIClient:
                 {'role': 'system', 'content': f'你是网络安全修复建议专家。根据提供的漏洞信息与处置建议，生成该漏洞在企业环境中的修复建议。要求简单明了不超过500字。仅用{target_lang}返回纯文本修复建议，不要返回JSON或潜在影响、风险提示等额外说明，也不需要返回标题，直接列出 1. 2. 3. 等步骤。'},
                 {'role': 'user', 'content': ctx}
             ],
-            'temperature': 0
+            'temperature': 0,
+            'chat_template_kwargs': {
+                'enable_thinking': False
+            }
         }
         headers = {
             'Authorization': f'Bearer {self.api_key}',

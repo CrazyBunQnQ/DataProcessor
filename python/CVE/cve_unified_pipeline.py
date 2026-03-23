@@ -81,6 +81,63 @@ def load_kv_cache(path: pathlib.Path) -> Dict[str, str]:
     return cache
 
 
+def normalize_direction(target_lang: str) -> str:
+    t = normalize_text(target_lang).lower()
+    if t in {"english", "en"}:
+        return "to_en"
+    if t in {"中文", "chinese", "zh", "zh-cn", "cn"}:
+        return "to_zh"
+    return "any"
+
+
+def parse_legacy_translate_key(raw_key: str, raw_kind: str) -> Tuple[str, str, str]:
+    key = normalize_text(raw_key)
+    kind = normalize_text(raw_kind)
+    direction = "any"
+    m = re.match(r"^([^:]+):(中文|English):(.*)$", key)
+    if m:
+        parsed_kind = normalize_text(m.group(1))
+        lang = normalize_text(m.group(2))
+        parsed_key = normalize_text(m.group(3))
+        if parsed_kind:
+            kind = parsed_kind
+        if lang == "中文":
+            direction = "to_zh"
+        elif lang.lower() == "english":
+            direction = "to_en"
+        key = parsed_key
+    return key, kind, direction
+
+
+def load_translate_cache(path: pathlib.Path) -> Dict[Tuple[str, str, str], str]:
+    cache: Dict[Tuple[str, str, str], str] = {}
+    if not path.exists():
+        return cache
+    for line in path.read_text(encoding="utf-8").splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        try:
+            item = json.loads(s)
+            raw_key = item.get("key") or item.get("source")
+            raw_value = item.get("value")
+            raw_kind = item.get("kind")
+            raw_direction = item.get("direction") or item.get("target") or item.get("target_lang")
+            key, kind, parsed_direction = parse_legacy_translate_key(raw_key, raw_kind)
+            value = normalize_text(raw_value)
+            if not key or not value:
+                continue
+            direction = normalize_direction(raw_direction) if normalize_text(raw_direction) else parsed_direction
+            cache[(kind, direction, key)] = value
+            cache[(kind, "any", key)] = value
+            if not kind:
+                cache[("", direction, key)] = value
+                cache[("", "any", key)] = value
+        except Exception:
+            continue
+    return cache
+
+
 def append_kv_cache(path: pathlib.Path, payload: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
@@ -113,7 +170,7 @@ def sanitize_solution(text: Any) -> str:
 
 def translate_with_cache(
     client: TranslationClient,
-    cache: Dict[str, str],
+    cache: Dict[Tuple[str, str, str], str],
     cache_path: pathlib.Path,
     text: str,
     target_lang: str,
@@ -122,14 +179,22 @@ def translate_with_cache(
     s = normalize_text(text)
     if not s:
         return None
-    key = f"{kind}:{target_lang}:{s}"
-    if key in cache:
-        return cache[key]
+    direction = normalize_direction(target_lang)
+    kind_norm = normalize_text(kind)
+    for cache_key in [
+        (kind_norm, direction, s),
+        (kind_norm, "any", s),
+        ("", direction, s),
+        ("", "any", s)
+    ]:
+        if cache_key in cache:
+            return cache[cache_key]
     out = client.translate(s, target_lang=target_lang)
     out_clean = normalize_text(out)
     if out_clean:
-        cache[key] = out_clean
-        append_kv_cache(cache_path, {"key": key, "value": out_clean, "kind": kind})
+        cache[(kind_norm, direction, s)] = out_clean
+        cache[(kind_norm, "any", s)] = out_clean
+        append_kv_cache(cache_path, {"key": s, "value": out_clean, "kind": kind_norm, "direction": direction})
         return out_clean
     return None
 
@@ -139,7 +204,7 @@ def fix_bilingual_pair(
     zh_key: str,
     en_key: str,
     translator: TranslationClient,
-    translate_cache: Dict[str, str],
+    translate_cache: Dict[Tuple[str, str, str], str],
     translate_cache_path: pathlib.Path
 ) -> None:
     zh_val = normalize_text(rec.get(zh_key))
@@ -313,7 +378,7 @@ def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
         logging.warning("未检测到 OPENAI_API_KEY，缺失修复建议将无法自动生成")
     translate_cache_path = pathlib.Path(args.translate_cache).resolve()
     solution_cache_path = pathlib.Path(args.solution_cache).resolve()
-    translate_cache = load_kv_cache(translate_cache_path)
+    translate_cache = load_translate_cache(translate_cache_path)
     solution_cache = load_kv_cache(solution_cache_path)
     rules = load_rules(pathlib.Path(args.rules_file).resolve())
     bar = tqdm(records, desc="补全与翻译", unit="条")
