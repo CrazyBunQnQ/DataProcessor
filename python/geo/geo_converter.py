@@ -366,14 +366,8 @@ def process_mmdb():
             loc['enName'] = to_pinyin(loc['name'])
             
     with open(OUTPUT_GEO_JSON, 'w', encoding='utf-8') as f:
-        f.write("[\n")
-        for i, loc in enumerate(geo_list):
-            json_str = json.dumps(loc, ensure_ascii=False, separators=(',', ':'))
-            if i < len(geo_list) - 1:
-                f.write(json_str + ",\n")
-            else:
-                f.write(json_str + "\n")
-        f.write("]")
+        for loc in geo_list:
+            f.write(json.dumps(loc, ensure_ascii=False) + "\n")
         
     print("Done.")
 
