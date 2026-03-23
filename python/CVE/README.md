@@ -63,3 +63,50 @@ cache_path = base / 'solutions_cache.jsonl'
 执行
 
 python fill_solutions_from_rules.py
+
+### 统一全流程脚本
+
+脚本：`cve_unified_pipeline.py`
+
+能力：
+- 下载并解压XML数据（可选）
+- 解析XML并与已有JSON输入合并去重
+- 自动修正字段语言与补全缺失字段
+- 自动补全修复建议并生成英文修复建议 `enSolution`
+- 输出 `CVE_full_YYYYMMDD.json`
+
+字段语言规则：
+- `title`、`threatName` 为中文
+- `enTitle`、`threatNameEng` 为英文
+- `description` 为中文
+- `vulnDescription`、`descriptionEng` 为英文
+- `solution` 为中文，`enSolution` 为英文
+
+示例1：仅处理已有输入文件
+
+```bash
+python cve_unified_pipeline.py --input-json CVE_incremental_20251205.json --output . --date-format %Y%m%d
+```
+
+示例2：下载后再处理
+
+```bash
+python cve_unified_pipeline.py --download-url "https://example.com/2026.xml" --download-url "https://example.com/cve_pack.zip" --input-json CVE_incremental_20251205.json --output .
+```
+
+常用参数：
+- `--data-dir` XML数据目录，默认 `./data`
+- `--download-url` 下载链接，可重复传入多个
+- `--download-manifest` 文本文件路径，每行一个下载链接
+- `--input-json` 需要合并的JSON文件列表
+- `--rules-file` 规则文件，默认 `./rules.sugst`
+- `--translate-cache` 翻译缓存文件，默认 `./translate_cache.jsonl`
+- `--solution-cache` 修复建议缓存文件，默认 `./solutions_cache.jsonl`
+- `--output` 输出目录或完整JSON文件路径
+- `--date-format` 输出文件日期格式，默认 `%Y%m%d`
+- `--log-level` 日志级别，默认 `INFO`
+- `--debug` 开启调试模式
+
+环境说明：
+- Python 3.8+
+- 若需自动翻译与自动生成修复建议，请在 `.env` 配置 `OPENAI_API_KEY`
