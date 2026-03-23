@@ -344,10 +344,42 @@ def build_output_path(output_arg: Optional[str], date_str: str) -> pathlib.Path:
     return BASE_DIR / f"CVE_full_{date_str}.json"
 
 
+def setup_debug_logger(enabled: bool, log_path: pathlib.Path) -> Optional[logging.Logger]:
+    if not enabled:
+        return None
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    logger = logging.getLogger("cve_debug")
+    logger.setLevel(logging.DEBUG)
+    logger.propagate = False
+    logger.handlers.clear()
+    handler = logging.FileHandler(log_path, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+    logger.addHandler(handler)
+    return logger
+
+
+def close_debug_logger(logger: Optional[logging.Logger]) -> None:
+    if not logger:
+        return
+    handlers = list(logger.handlers)
+    for handler in handlers:
+        handler.flush()
+        handler.close()
+        logger.removeHandler(handler)
+
+
+def record_key(rec: Dict[str, Any]) -> str:
+    return normalize_text(rec.get("cve")) or normalize_text(rec.get("nvdCve")) or normalize_text(rec.get("cnnvd")) or "UNKNOWN"
+
+
 def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
     date_str = datetime.now().strftime(args.date_format)
     output_path = build_output_path(args.output, date_str)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    debug_log_path = pathlib.Path(args.debug_log).resolve() if normalize_text(args.debug_log) else output_path.parent / "debug.log"
+    debug_logger = setup_debug_logger(bool(args.debug), debug_log_path)
+    if debug_logger:
+        debug_logger.debug("debug logging enabled")
     data_dir = pathlib.Path(args.data_dir).resolve()
     urls = collect_download_urls(args.download_url or [], pathlib.Path(args.download_manifest).resolve() if args.download_manifest else None)
     if urls:
@@ -370,7 +402,7 @@ def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
         logging.info("读取JSON记录: %s -> %d", jpath, len(loaded))
     records = merge_records([*input_records, *xml_records])
     logging.info("合并去重后记录数: %d", len(records))
-    translator = TranslationClient(debug=args.debug)
+    translator = TranslationClient(debug=False)
     ai = OpenAIClient()
     if not translator.can_translate():
         logging.warning("未检测到翻译配置，语言纠正与英文建议补全可能不完整")
@@ -385,6 +417,9 @@ def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
     for rec in bar:
         if not isinstance(rec, dict):
             continue
+        rec_id = record_key(rec)
+        if debug_logger:
+            debug_logger.debug("before %s %s", rec_id, json.dumps(rec, ensure_ascii=False, sort_keys=True))
         fix_bilingual_pair(rec, "title", "enTitle", translator, translate_cache, translate_cache_path)
         if is_empty(rec.get("threatName")) and not is_empty(rec.get("title")):
             rec["threatName"] = rec.get("title")
@@ -417,10 +452,13 @@ def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
             rec["descriptionEng"] = desc_eng
         fill_solution(rec, rules, ai, solution_cache, solution_cache_path)
         fix_bilingual_pair(rec, "solution", "enSolution", translator, translate_cache, translate_cache_path)
+        if debug_logger:
+            debug_logger.debug("after %s %s", rec_id, json.dumps(rec, ensure_ascii=False, sort_keys=True))
     for idx, rec in enumerate(records, start=1):
         if is_empty(rec.get("id")):
             rec["id"] = str(idx)
     output_path.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+    close_debug_logger(debug_logger)
     logging.info("输出文件: %s", output_path)
     logging.info("输出记录数: %d", len(records))
     return output_path
@@ -439,6 +477,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--date-format", default="%Y%m%d")
     parser.add_argument("--log-level", default="INFO")
     parser.add_argument("--debug", action="store_true", default=False)
+    parser.add_argument("--debug-log", default="debug.log")
     return parser
 
 
