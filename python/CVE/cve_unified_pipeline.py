@@ -181,7 +181,9 @@ def translate_with_cache(
     text: str,
     target_lang: str,
     kind: str,
-    trace: Optional[Dict[str, Any]] = None
+    trace: Optional[Dict[str, Any]] = None,
+    validator: Optional[OpenAIClient] = None,
+    validate_translation_result: bool = False
 ) -> Optional[str]:
     s = normalize_text(text)
     if not s:
@@ -203,6 +205,18 @@ def translate_with_cache(
         trace["translate_cache_miss_count"] = int(trace.get("translate_cache_miss_count", 0)) + 1
     out = client.translate(s, target_lang=target_lang)
     out_clean = normalize_text(out)
+    if out_clean and validate_translation_result and validator and validator.api_key:
+        if trace is not None:
+            trace["translation_validation_enabled"] = True
+        ok = bool(validator.is_translation_valid(s, out_clean, target_lang=target_lang))
+        if trace is not None:
+            trace["translation_validation_checked_count"] = int(trace.get("translation_validation_checked_count", 0)) + 1
+            if ok:
+                trace["translation_validation_pass_count"] = int(trace.get("translation_validation_pass_count", 0)) + 1
+            else:
+                trace["translation_validation_fail_count"] = int(trace.get("translation_validation_fail_count", 0)) + 1
+        if not ok:
+            return None
     if out_clean:
         cache[(kind_norm, direction, s)] = out_clean
         cache[(kind_norm, "any", s)] = out_clean
@@ -218,7 +232,9 @@ def fix_bilingual_pair(
     translator: TranslationClient,
     translate_cache: Dict[Tuple[str, str, str], str],
     translate_cache_path: pathlib.Path,
-    trace: Optional[Dict[str, Any]] = None
+    trace: Optional[Dict[str, Any]] = None,
+    validator: Optional[OpenAIClient] = None,
+    validate_translation_result: bool = False
 ) -> None:
     zh_val = normalize_text(rec.get(zh_key))
     en_val = normalize_text(rec.get(en_key))
@@ -232,7 +248,9 @@ def fix_bilingual_pair(
                 source_for_zh,
                 "中文",
                 kind=zh_key,
-                trace=trace
+                trace=trace,
+                validator=validator,
+                validate_translation_result=validate_translation_result
             )
             if tr_zh:
                 zh_val = tr_zh
@@ -245,7 +263,9 @@ def fix_bilingual_pair(
                 en_val,
                 "中文",
                 kind=zh_key,
-                trace=trace
+                trace=trace,
+                validator=validator,
+                validate_translation_result=validate_translation_result
             )
             if tr_zh:
                 zh_val = tr_zh
@@ -259,7 +279,9 @@ def fix_bilingual_pair(
                 source_for_en,
                 "English",
                 kind=en_key,
-                trace=trace
+                trace=trace,
+                validator=validator,
+                validate_translation_result=validate_translation_result
             )
             if tr_en:
                 en_val = tr_en
@@ -272,7 +294,9 @@ def fix_bilingual_pair(
                 zh_val,
                 "English",
                 kind=en_key,
-                trace=trace
+                trace=trace,
+                validator=validator,
+                validate_translation_result=validate_translation_result
             )
             if tr_en:
                 en_val = tr_en
@@ -508,10 +532,13 @@ def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
     logging.info("合并去重后记录数: %d", len(records))
     translator = TranslationClient(debug=False)
     ai = OpenAIClient()
+    validate_translation_result = bool(getattr(args, "validate_translation_result", False))
     if not translator.can_translate():
         logging.warning("未检测到翻译配置，语言纠正与英文建议补全可能不完整")
     if not ai.api_key:
         logging.warning("未检测到 OPENAI_API_KEY，缺失修复建议将无法自动生成")
+    if validate_translation_result and not ai.api_key:
+        logging.warning("已启用翻译结果校验，但未检测到 OPENAI_API_KEY，将跳过校验")
     translate_cache_path = pathlib.Path(args.translate_cache).resolve()
     solution_cache_path = pathlib.Path(args.solution_cache).resolve()
     translate_cache = load_translate_cache(translate_cache_path)
@@ -527,17 +554,51 @@ def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
             "translate_cache_hit_count": 0,
             "translate_cache_miss_count": 0,
             "solution_cache_hit": False,
-            "solution_source": ""
+            "solution_source": "",
+            "translation_validation_enabled": validate_translation_result,
+            "translation_validation_checked_count": 0,
+            "translation_validation_pass_count": 0,
+            "translation_validation_fail_count": 0
         }
         if debug_logger:
             debug_logger.debug("before %s %s", rec_id, json.dumps(strip_null_fields(rec), ensure_ascii=False, sort_keys=True))
-        fix_bilingual_pair(rec, "title", "enTitle", translator, translate_cache, translate_cache_path, trace=trace)
+        fix_bilingual_pair(
+            rec,
+            "title",
+            "enTitle",
+            translator,
+            translate_cache,
+            translate_cache_path,
+            trace=trace,
+            validator=ai,
+            validate_translation_result=validate_translation_result
+        )
         if is_empty(rec.get("threatName")) and not is_empty(rec.get("title")):
             rec["threatName"] = rec.get("title")
         if is_empty(rec.get("threatNameEng")) and not is_empty(rec.get("enTitle")):
             rec["threatNameEng"] = rec.get("enTitle")
-        fix_bilingual_pair(rec, "threatName", "threatNameEng", translator, translate_cache, translate_cache_path, trace=trace)
-        fix_bilingual_pair(rec, "description", "vulnDescription", translator, translate_cache, translate_cache_path, trace=trace)
+        fix_bilingual_pair(
+            rec,
+            "threatName",
+            "threatNameEng",
+            translator,
+            translate_cache,
+            translate_cache_path,
+            trace=trace,
+            validator=ai,
+            validate_translation_result=validate_translation_result
+        )
+        fix_bilingual_pair(
+            rec,
+            "description",
+            "vulnDescription",
+            translator,
+            translate_cache,
+            translate_cache_path,
+            trace=trace,
+            validator=ai,
+            validate_translation_result=validate_translation_result
+        )
         desc_eng = normalize_text(rec.get("descriptionEng"))
         if desc_eng:
             if has_chinese(desc_eng):
@@ -548,7 +609,9 @@ def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
                     desc_eng,
                     "English",
                     kind="descriptionEng",
-                    trace=trace
+                    trace=trace,
+                    validator=ai,
+                    validate_translation_result=validate_translation_result
                 )
                 if translated_desc_eng:
                     desc_eng = translated_desc_eng
@@ -566,14 +629,26 @@ def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
                         source_cn,
                         "English",
                         kind="descriptionEng",
-                        trace=trace
+                        trace=trace,
+                        validator=ai,
+                        validate_translation_result=validate_translation_result
                     )
                     if translated_desc_eng:
                         desc_eng = translated_desc_eng
         if desc_eng:
             rec["descriptionEng"] = desc_eng
         fill_solution(rec, rules, ai, solution_cache, solution_cache_path, trace=trace)
-        fix_bilingual_pair(rec, "solution", "enSolution", translator, translate_cache, translate_cache_path, trace=trace)
+        fix_bilingual_pair(
+            rec,
+            "solution",
+            "enSolution",
+            translator,
+            translate_cache,
+            translate_cache_path,
+            trace=trace,
+            validator=ai,
+            validate_translation_result=validate_translation_result
+        )
         if debug_logger:
             debug_logger.debug("cache %s %s", rec_id, json.dumps(trace, ensure_ascii=False, sort_keys=True))
             debug_logger.debug("after %s %s", rec_id, json.dumps(strip_null_fields(rec), ensure_ascii=False, sort_keys=True))
@@ -605,6 +680,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--log-level", default="INFO")
     parser.add_argument("--debug", action="store_true", default=False)
     parser.add_argument("--debug-log", default="debug.log")
+    parser.add_argument("--validate-translation-result", action="store_true", default=False)
     return parser
 
 
