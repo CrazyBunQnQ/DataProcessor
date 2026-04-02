@@ -500,6 +500,14 @@ def strip_null_fields(data: Any) -> Any:
     return data
 
 
+def exceeds_name_field_length_limit(rec: Dict[str, Any], max_len: int) -> bool:
+    for key in ["title", "threatName", "enTitle", "threatNameEng"]:
+        v = normalize_text(rec.get(key))
+        if v and len(v) > max_len:
+            return True
+    return False
+
+
 def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
     date_str = datetime.now().strftime(args.date_format)
     output_path = build_output_path(args.output, date_str)
@@ -533,6 +541,7 @@ def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
     translator = TranslationClient(debug=False)
     ai = OpenAIClient()
     validate_translation_result = bool(getattr(args, "validate_translation_result", False))
+    max_name_field_length = int(getattr(args, "max_name_field_length", 250))
     if not translator.can_translate():
         logging.warning("未检测到翻译配置，语言纠正与英文建议补全可能不完整")
     if not ai.api_key:
@@ -652,17 +661,27 @@ def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
         if debug_logger:
             debug_logger.debug("cache %s %s", rec_id, json.dumps(trace, ensure_ascii=False, sort_keys=True))
             debug_logger.debug("after %s %s", rec_id, json.dumps(strip_null_fields(rec), ensure_ascii=False, sort_keys=True))
-    for idx, rec in enumerate(records, start=1):
+    filtered_records: List[Dict[str, Any]] = []
+    skipped_by_name_len = 0
+    for rec in records:
+        if exceeds_name_field_length_limit(rec, max_name_field_length):
+            skipped_by_name_len += 1
+            if debug_logger:
+                debug_logger.debug("skip_by_name_len %s %s", record_key(rec), json.dumps(strip_null_fields(rec), ensure_ascii=False, sort_keys=True))
+            continue
+        filtered_records.append(rec)
+    for idx, rec in enumerate(filtered_records, start=1):
         if is_empty(rec.get("id")):
             rec["id"] = str(idx)
-    validate_records_for_json(records)
+    validate_records_for_json(filtered_records)
     jsonl_path = build_jsonl_output_path(output_path)
-    atomic_write_json(output_path, records)
-    atomic_write_jsonl(jsonl_path, records)
+    atomic_write_json(output_path, filtered_records)
+    atomic_write_jsonl(jsonl_path, filtered_records)
     close_debug_logger(debug_logger)
     logging.info("输出文件: %s", output_path)
     logging.info("输出文件: %s", jsonl_path)
-    logging.info("输出记录数: %d", len(records))
+    logging.info("长度过滤跳过记录数: %d (阈值: %d)", skipped_by_name_len, max_name_field_length)
+    logging.info("输出记录数: %d", len(filtered_records))
     return output_path
 
 
@@ -681,6 +700,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--debug", action="store_true", default=False)
     parser.add_argument("--debug-log", default="debug.log")
     parser.add_argument("--validate-translation-result", action="store_true", default=False)
+    parser.add_argument("--max-name-field-length", type=int, default=250)
     return parser
 
 
