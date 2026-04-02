@@ -398,29 +398,40 @@ def build_jsonl_output_path(json_output_path: pathlib.Path) -> pathlib.Path:
     return json_output_path.with_suffix(".jsonl")
 
 
-def validate_json_payload(records: List[Dict[str, Any]]) -> str:
-    payload = json.dumps(records, ensure_ascii=False, indent=2)
-    parsed = json.loads(payload)
-    if not isinstance(parsed, list):
-        raise ValueError("输出JSON结构错误，顶层不是数组")
-    return payload
+def validate_records_for_json(records: List[Dict[str, Any]]) -> None:
+    for i, rec in enumerate(records, start=1):
+        try:
+            line = json.dumps(rec, ensure_ascii=False)
+            parsed = json.loads(line)
+            if not isinstance(parsed, dict):
+                raise ValueError(f"第{i}条记录结构错误，必须为对象")
+        except Exception as e:
+            raise ValueError(f"第{i}条记录JSON校验失败: {e}")
 
 
-def atomic_write_text(path: pathlib.Path, content: str) -> None:
+def atomic_write_json(path: pathlib.Path, records: List[Dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False, dir=str(path.parent), suffix=".tmp") as tmp:
-        tmp.write(content)
+        json.dump(records, tmp, ensure_ascii=False, indent=2)
         temp_path = pathlib.Path(tmp.name)
     os.replace(str(temp_path), str(path))
 
 
-def build_jsonl_payload(records: List[Dict[str, Any]]) -> str:
-    lines: List[str] = []
-    for rec in records:
-        line = json.dumps(rec, ensure_ascii=False)
-        json.loads(line)
-        lines.append(line)
-    return "\n".join(lines) + ("\n" if lines else "")
+def atomic_write_jsonl(path: pathlib.Path, records: List[Dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False, dir=str(path.parent), suffix=".tmp") as tmp:
+        for i, rec in enumerate(records, start=1):
+            try:
+                line = json.dumps(rec, ensure_ascii=False)
+                parsed = json.loads(line)
+                if not isinstance(parsed, dict):
+                    raise ValueError(f"第{i}行结构错误，必须为对象")
+            except Exception as e:
+                raise ValueError(f"第{i}行JSONL校验失败: {e}")
+            tmp.write(line)
+            tmp.write("\n")
+        temp_path = pathlib.Path(tmp.name)
+    os.replace(str(temp_path), str(path))
 
 
 def setup_debug_logger(enabled: bool, log_path: pathlib.Path) -> Optional[logging.Logger]:
@@ -569,19 +580,10 @@ def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
     for idx, rec in enumerate(records, start=1):
         if is_empty(rec.get("id")):
             rec["id"] = str(idx)
-    json_payload = validate_json_payload(records)
+    validate_records_for_json(records)
     jsonl_path = build_jsonl_output_path(output_path)
-    jsonl_payload = build_jsonl_payload(records)
-    atomic_write_text(output_path, json_payload)
-    atomic_write_text(jsonl_path, jsonl_payload)
-    loaded_from_file = json.loads(output_path.read_text(encoding="utf-8"))
-    if not isinstance(loaded_from_file, list):
-        raise ValueError("输出JSON文件校验失败，无法按数组读取")
-    for i, line in enumerate(jsonl_path.read_text(encoding="utf-8").splitlines(), start=1):
-        try:
-            json.loads(line)
-        except Exception as e:
-            raise ValueError(f"输出JSONL文件第{i}行不是有效JSON: {e}")
+    atomic_write_json(output_path, records)
+    atomic_write_jsonl(jsonl_path, records)
     close_debug_logger(debug_logger)
     logging.info("输出文件: %s", output_path)
     logging.info("输出文件: %s", jsonl_path)
