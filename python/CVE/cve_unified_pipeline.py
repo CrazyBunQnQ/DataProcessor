@@ -5,6 +5,7 @@ import os
 import pathlib
 import re
 import sys
+import tempfile
 import urllib.request
 import zipfile
 from datetime import datetime
@@ -393,6 +394,35 @@ def build_output_path(output_arg: Optional[str], date_str: str) -> pathlib.Path:
     return BASE_DIR / f"CVE_full_{date_str}.json"
 
 
+def build_jsonl_output_path(json_output_path: pathlib.Path) -> pathlib.Path:
+    return json_output_path.with_suffix(".jsonl")
+
+
+def validate_json_payload(records: List[Dict[str, Any]]) -> str:
+    payload = json.dumps(records, ensure_ascii=False, indent=2)
+    parsed = json.loads(payload)
+    if not isinstance(parsed, list):
+        raise ValueError("输出JSON结构错误，顶层不是数组")
+    return payload
+
+
+def atomic_write_text(path: pathlib.Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False, dir=str(path.parent), suffix=".tmp") as tmp:
+        tmp.write(content)
+        temp_path = pathlib.Path(tmp.name)
+    os.replace(str(temp_path), str(path))
+
+
+def build_jsonl_payload(records: List[Dict[str, Any]]) -> str:
+    lines: List[str] = []
+    for rec in records:
+        line = json.dumps(rec, ensure_ascii=False)
+        json.loads(line)
+        lines.append(line)
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
 def setup_debug_logger(enabled: bool, log_path: pathlib.Path) -> Optional[logging.Logger]:
     if not enabled:
         return None
@@ -539,9 +569,22 @@ def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
     for idx, rec in enumerate(records, start=1):
         if is_empty(rec.get("id")):
             rec["id"] = str(idx)
-    output_path.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+    json_payload = validate_json_payload(records)
+    jsonl_path = build_jsonl_output_path(output_path)
+    jsonl_payload = build_jsonl_payload(records)
+    atomic_write_text(output_path, json_payload)
+    atomic_write_text(jsonl_path, jsonl_payload)
+    loaded_from_file = json.loads(output_path.read_text(encoding="utf-8"))
+    if not isinstance(loaded_from_file, list):
+        raise ValueError("输出JSON文件校验失败，无法按数组读取")
+    for i, line in enumerate(jsonl_path.read_text(encoding="utf-8").splitlines(), start=1):
+        try:
+            json.loads(line)
+        except Exception as e:
+            raise ValueError(f"输出JSONL文件第{i}行不是有效JSON: {e}")
     close_debug_logger(debug_logger)
     logging.info("输出文件: %s", output_path)
+    logging.info("输出文件: %s", jsonl_path)
     logging.info("输出记录数: %d", len(records))
     return output_path
 
