@@ -508,6 +508,31 @@ def exceeds_name_field_length_limit(rec: Dict[str, Any], max_len: int) -> bool:
     return False
 
 
+def assign_output_ids(records: List[Dict[str, Any]]) -> None:
+    used = set()
+    for idx, rec in enumerate(records, start=1):
+        candidates = [
+            normalize_text(rec.get("cve")),
+            normalize_text(rec.get("nvdCve")),
+            normalize_text(rec.get("cnnvd")),
+            normalize_text(rec.get("id"))
+        ]
+        base_id = ""
+        for c in candidates:
+            if c:
+                base_id = c
+                break
+        if not base_id:
+            base_id = str(idx)
+        out_id = base_id
+        seq = 2
+        while out_id in used:
+            out_id = f"{base_id}_{seq}"
+            seq += 1
+        rec["id"] = out_id
+        used.add(out_id)
+
+
 def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
     date_str = datetime.now().strftime(args.date_format)
     output_path = build_output_path(args.output, date_str)
@@ -670,9 +695,7 @@ def process_pipeline(args: argparse.Namespace) -> pathlib.Path:
                 debug_logger.debug("skip_by_name_len %s %s", record_key(rec), json.dumps(strip_null_fields(rec), ensure_ascii=False, sort_keys=True))
             continue
         filtered_records.append(rec)
-    for idx, rec in enumerate(filtered_records, start=1):
-        if is_empty(rec.get("id")):
-            rec["id"] = str(idx)
+    assign_output_ids(filtered_records)
     validate_records_for_json(filtered_records)
     jsonl_path = build_jsonl_output_path(output_path)
     atomic_write_json(output_path, filtered_records)
